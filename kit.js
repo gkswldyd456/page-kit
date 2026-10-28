@@ -1,7 +1,7 @@
-// page-kit v2026.10.29-0112
-window.__kitBuilt = "v2026.10.29-0112";
+// page-kit v2026.10.29-0835
+window.__kitBuilt = "v2026.10.29-0835";
 window.__K = {
-  get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 시작 한 줄을 다시 실행"); return window.__kitCfg; },
+  get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
   get nA() { return this.c.name.A; }, get nB() { return this.c.name.B; },
   get w() { return this.c.word; },
@@ -13,9 +13,11 @@ window.__K = {
   el(k) { return document.getElementById(this.c.sel[k]); },
   pdfjs() { const [p, s] = this.c.pdfjs; return import(new URL(p, document.querySelector(`script[src*="${s}"]`).src).href); },
 };
+const KIT_CFGV = 1;
 window.__kitReady = () => {
-  if (!window.__kitCfg) return "도구를 못 씀 — 설정(__kitCfg)이 없음. 시작 한 줄을 처음부터 다시 실행";
+  if (!window.__kitCfg) return "도구를 못 씀 — 설정(__kitCfg)이 없음. 북마크 '도구'를 다시 누르기";
   const c = window.__kitCfg, n = Object.keys(window).filter((k) => /^__/.test(k) && typeof window[k] === "function").length;
+  if ((c.cfgv || 0) < KIT_CFGV) return `도구를 못 씀 — 북마크 '도구'가 옛것(설정 ${c.cfgv || 0} < ${KIT_CFGV}). 캔버스 ① 대로 북마크를 새로 만들기`;
   const built = window.__kitBuilt && window.__kitBuilt !== c.ver ? ` · 주의: 받은 도구 판 ${window.__kitBuilt} ≠ 설정 판 ${c.ver}` : "";
   const hook = typeof (window[c.hook] || {})[c.exp] === "function" ? "" : " · 주의: 페이지 통로가 없음(지침의 주소로 다시 열기)";
   return `도구 ${c.ver} 준비됨 · 함수 ${n}개 · 업체 A=${c.name.A}(${c.vendor.A}) / B=${c.name.B}(${c.vendor.B})${built}${hook}`;
