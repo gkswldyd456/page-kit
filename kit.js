@@ -1,5 +1,5 @@
-// page-kit v2026.10.29-0037
-window.__kitBuilt = "v2026.10.29-0037";
+// page-kit v2026.10.29-0102
+window.__kitBuilt = "v2026.10.29-0102";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 시작 한 줄을 다시 실행"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -20,6 +20,7 @@ window.__kitReady = () => {
   const hook = typeof (window[c.hook] || {})[c.exp] === "function" ? "" : " · 주의: 페이지 통로가 없음(지침의 주소로 다시 열기)";
   return `도구 ${c.ver} 준비됨 · 함수 ${n}개 · 업체 A=${c.name.A}(${c.vendor.A}) / B=${c.name.B}(${c.vendor.B})${built}${hook}`;
 };
+window.__show = (x, n = 4000) => (typeof x === "string" ? x : JSON.stringify(x)).replace(/&/g, "＆").slice(0, n);
 window.__loadMessages = (messages, name = "edited.json") => {
   const dt = new DataTransfer();
   dt.items.add(new File([JSON.stringify(messages)], name, { type: "application/json" }));
@@ -40,7 +41,8 @@ window.__lx = (() => {
   const classify = (prefix, inner) => {
     const rows = inner.split(ROW).map((r) => r.trim()).filter(Boolean);
     const lead = (rows.length ? splitAmp(rows[0])[0] : "").trim();
-    const heads = rows.slice(1).map((r) => splitAmp(r)[0].trim());
+    const step = (r) => !splitAmp(r)[0].trim() && /^\s*\\(?:hbright|hspace\*)/.test(splitAmp(r)[1] || "");
+    const heads = rows.slice(1).filter((r) => !step(r)).map((r) => splitAmp(r)[0].trim());
     const tails = rows.slice(1).map((r) => (splitAmp(r)[1] || "").trimStart());
     if (lead.startsWith("\\therefore") && !lead.slice(10).replace(/[ ~\\,]/g, "")) return "AL-T";
     if (["\\qquad", "~~", ""].includes(lead) && heads.length && heads.every((h) => h.replace(/~|\\,/g, "").trim()))
@@ -1249,6 +1251,294 @@ window.__fixBRun = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) => 
             __job.fix.push(...got.filter((g) => !g.skipped));
           }
         }
+        __job.log.push(`${W[m.index]} 끝`);
+      }
+      window.__loadMessages(apply ? work : orig, apply ? "fixed.json" : "original.json");
+      __job.log.push(apply ? "고친 msgs 를 페이지에 불러옴 — 💾 저장 전 사람 확인" : "미리보기 — 원래 msgs 를 다시 불러옴");
+    } catch (e) { __job.log.push("ERR " + e.message); }
+    __job.done = true;
+  })();
+  return "started";
+};
+(() => {
+  const clear = (m) => window.__clearRender && window.__clearRender(m);
+  const HBRE = /(\\begin\{hangblock\})(\[[^\]]*\])?\{([^}]*)\}\{([^}]*)\}([\s\S]*?)(\\end\{hangblock\})/g;
+  const mm = (s) => parseFloat(s) || 0;
+  const fmt = (x) => `${Math.round(x * 10) / 10}mm`;
+  const topIdx = (s, test) => { let d = 0; for (let i = 0; i < s.length; i++) { const c = s[i]; if (c === "{") d++; else if (c === "}") d--; else if (d === 0 && test(s, i)) return i; } return -1; };
+  const RE_TB = /\\(therefore|because)\s*(?:\\,){4,}(?!\s*&)/g;
+  const fixA = (lx) => lx.replace(RE_TB, "\\$1 ~");
+  const unwrap = (s) => { s = s.trim(); if (s.startsWith("{") && s.endsWith("}")) { let d = 0, ok = true; for (let i = 0; i < s.length; i++) { if (s[i] === "{") d++; else if (s[i] === "}") { d--; if (d === 0 && i < s.length - 1) { ok = false; break; } } } if (ok) return s.slice(1, -1).trim(); } return s; };
+  const PRE = /^(?:\\sffamily |\\hspace\*\{[0-9.]+mm\}|\\qquad|\\tab|~|\s)*/;
+  const parseSeg = (raw) => {
+    let s = unwrap(raw);
+    const pre = s.match(PRE)[0]; s = s.slice(pre.length);
+    let label = "";
+    const lb = s.match(/^\(([가-힣 ]+)\)\s*/); if (lb) { label = lb[1]; s = s.slice(lb[0].length); }
+    const x = s.match(/^\{?\$([^$]*)\$\}?\s*(\\hbright\{[\s\S]*\})?\s*$/);
+    if (!x) return null;
+    return { pre, label, m: x[1].trim(), tail: x[2] || "", tab: /\\tab/.test(pre) };
+  };
+  const cw10Para = (b) => {
+    if (!b.includes("\\hblinebreak") || b.includes("\\begin{aligned}")) return null;
+    let pre = b.match(/^(?:\\sffamily |\\hspace\*\{[0-9.]+mm\}|\\qquad|~|\s)*/)[0];
+    const segs = b.slice(pre.length).split(/\\hblinebreak\s*/).map(parseSeg);
+    if (segs.some((s) => !s)) return null;
+    const f = segs[0];
+    if (f.pre.trim()) pre = pre + f.pre.replace(/\\tab\s*/g, "");
+    const rest = segs.slice(1);
+    const cont = rest.some((r) => /^(?:[+-]|\\times|\\cdot)/.test(r.m));
+    let head;
+    const rows = [];
+    if (f.label) { if (!/^=/.test(f.m)) return null; rows.push(`\\text{(${f.label})}&${f.m}${f.tail}`); }
+    else {
+      const e = topIdx(f.m, (s, i) => s[i] === "="); if (e < 0) return null;
+      if (cont) {
+        const together = /\\qquad/.test(pre);
+        pre = pre.replace(/\\qquad\s*/g, "");
+        rows.push((together ? "\\qquad&" : "~~&") + f.m.slice(0, e).trim());
+        rows.push((together ? "~~" : "") + "=&" + f.m.slice(e + 1).trim() + f.tail);
+      } else rows.push(f.m.slice(0, e) + "&" + f.m.slice(e) + f.tail);
+    }
+    const two = cont && !f.label;
+    for (let i = 0; i < rest.length; i++) {
+      const r = rest[i];
+      if (/^=/.test(r.m)) { rows.push(two ? (/\\qquad&/.test(rows[0]) ? "~~" : "") + "=&" + r.m.slice(1).trim() + r.tail : "&" + r.m + r.tail); continue; }
+      if (/^(?:[+-]|\\times|\\cdot)/.test(r.m)) {
+        const lastOfRun = !(rest[i + 1] && /^(?:[+-]|\\times|\\cdot)/.test(rest[i + 1].m));
+        rows.push(lastOfRun ? `&\\hbright{$${r.m}$}` : `&\\hspace*{6mm}${r.m}${r.tail}`); continue;
+      }
+      return null;
+    }
+    return { body: pre + "$\\begin{aligned}" + rows.join("\\\\\n") + "\\end{aligned}$", two };
+  };
+  const splitGroups = (b) => {
+    if (!b.includes("\\hblinebreak") || b.includes("\\begin{aligned}")) return null;
+    const pre = b.match(/^(?:\\sffamily |\\hspace\*\{[0-9.]+mm\}|\\qquad|~|\s)*/)[0];
+    const segs = b.slice(pre.length).split(/\\hblinebreak\s*/).map((s) => s.trim());
+    if (!segs.some((s) => /^\{?\$[^$]*\$\}?\s*,\s*\{?\$[^$]*\$\}?$/.test(s))) return null;
+    const groups = [[]]; let after = "";
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      let x;
+      if ((x = s.match(/^\{?\$([^$]*)\$\}?\s*,\s*\{?\$([^$]*)\$\}?$/))) { groups[groups.length - 1].push(x[1].trim() + "\\text{,}"); groups.push([x[2].trim()]); continue; }
+      if (i === segs.length - 1 && (x = s.match(/^\{?\$([^$]*)\$\}?\s*([가-힣][^$\\]*)$/))) { groups[groups.length - 1].push(x[1].trim()); after = x[2].trim(); continue; }
+      if ((x = s.match(/^\{?\$([^$]*)\$\}?$/))) { groups[groups.length - 1].push(x[1].trim()); continue; }
+      return null;
+    }
+    const out = [];
+    for (const g of groups) {
+      let [lhsRow, ...rest] = g;
+      let e = topIdx(lhsRow, (s, i) => s[i] === "=");
+      if (e < 0 && rest.length && /^=/.test(rest[0])) { e = lhsRow.length; lhsRow = lhsRow + rest.shift(); }
+      if (e < 0 || !rest.every((r) => /^=/.test(r))) return null;
+      out.push("\\hspace*{0.01mm}\\qquad$\\begin{aligned}" + [lhsRow.slice(0, e) + "&" + lhsRow.slice(e), ...rest.map((r) => "&" + r)].join("\\\\\n") + "\\end{aligned}$");
+    }
+    if (after) out.push(after);
+    return out;
+  };
+  const fixD = (lx, log) => lx.replace(HBRE, (all, a, F, b, c, body, z) => {
+    const g = splitGroups(body);
+    if (g) { log.push("D2"); return g.map((x) => a + (F || "") + `{${b}}{${c}}` + x + z).join("\n"); }
+    const r = cw10Para(body); if (r === null) return all;
+    log.push("D"); return a + (F || "") + `{${r.two ? "0mm" : b}}{${c}}` + r.body + z;
+  });
+  const fixG = (lx, log) => lx.replace(/\\begin\{aligned\}([\s\S]*?)\\end\{aligned\}/g, (all, inner) => {
+    const rows = inner.split(/\\\\(?![A-Za-z])/);
+    const r0 = rows[0].match(/^(\s*(?:~~|\\qquad)?\s*)&([\s\S]*)$/);
+    if (!r0) return all;
+    const e = topIdx(r0[2], (s, i) => s[i] === "=");
+    if (e < 0 || !rows.slice(1).every((r) => /^\s*(?:~~)?=&/.test(r))) return all;
+    log.push("G");
+    const out = [r0[2].slice(0, e) + "&" + r0[2].slice(e), ...rows.slice(1).map((r) => r.replace(/^(\s*)(?:~~)?=&/, "$1&="))];
+    return "\\begin{aligned}" + out.join("\\\\") + "\\end{aligned}";
+  });
+  const fixH = (lx, log) => lx.replace(/\\begin\{cases\}([\s\S]*?)\\end\{cases\}/g, (all, inner) => {
+    if (!/[㉠-㉭]/.test(inner) || /\\hbright/.test(inner)) return all;
+    const sp = /(?:\^\{\{\}\^\{\}\}|\{\}\^\{\{\}\^\{\}\}|\{\}_\{\{\}_\{\}\}|\\,|~|\s)*/;
+    const rows = inner.split(/\\\\(?![A-Za-z])/).map((r) => r.trim()).filter((r) => r && !/^(?:\\,|\s)*$/.test(r));
+    const out = [];
+    for (const r of rows) {
+      const x = r.match(new RegExp("^" + sp.source + "([\\s\\S]*?)\\s*&?\\s*" + sp.source + "\\\\cdots\\s*(?:\\\\,)?\\s*\\\\text\\{([㉠-㉭])\\}\\s*$"));
+      if (!x) return all;
+      out.push(`\\,${x[1].trim()} \\hbright{$\\cdots $ ${x[2]}}`);
+    }
+    log.push("H");
+    return "\\begin{cases}" + out.join("\\\\") + "\\\\\n\\end{cases}";
+  });
+  const fixF = (m, log) => {
+    const want = { analysis: ["3.8mm", "3.3mm"], conceptUp: ["3.8mm", "3.3mm"], explanation: ["4mm", "4.1mm"] }[m.type];
+    if (!want) return m.latex;
+    return m.latex.replace(HBRE, (all, a, F, N, C, body, z) => {
+      if (N !== want[0] || !/^(?:\\sffamily |\\hspace\*\{[^}]*\}|\{|\s)*[①-⑳]/.test(body)) return all;
+      log.push("F"); return a + (F || "") + `{${want[1]}}{${C}}` + body + z;
+    });
+  };
+  const shiftHB = (lx, L) => lx.replace(HBRE, (all, a, F, N, C, body, z) => a + `[${fmt(Math.max(0, mm((F || "[0mm]").slice(1, -1)) - L))}]` + `{${fmt(Math.max(0, mm(N) - L))}}{${C}}` + body + z);
+  const fixE = (msgs, log) => {
+    const drop = new Set();
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i];
+      if (m.type !== "contents_D1" && m.type !== "analysis_D1") continue;
+      const Ns = [...m.latex.matchAll(HBRE)].map((x) => mm(x[3]));
+      let L = Math.min(...Ns);
+      if ([12.9, 8.9, 8.5].some((w) => Math.abs(L - w) < 0.05)) {  }
+      else if (L > 13.5) L = m.type === "contents_D1" ? 12.9 : 8.5;
+      else continue;
+      m.latex = shiftHB(m.latex, L); clear(m); log.push("E");
+      for (let j = i + 1; j < msgs.length && msgs[j].type === "contents"; j++) {
+        const hb = [...msgs[j].latex.matchAll(HBRE)];
+        if (!hb.length || hb.some((x) => mm((x[2] || "[0mm]").slice(1, -1)) < L - 0.5 || x[4] !== "0")) break;
+        const body = hb.map((x) => shiftHB(x[0], L)).join("\n");
+        m.latex = m.latex.replace(/\s*$/, "\n" + body + "\n");
+        drop.add(j); log.push("E+");
+      }
+    }
+    if (!drop.size) return msgs;
+    const keep = msgs.filter((_, i) => !drop.has(i));
+    const map = new Map(); let k = 0;
+    for (const m of keep) { if (m.type === "meta" || m.type === "done") continue; map.set(m.index, k); m.index = k++; }
+    for (const m of keep) {
+      if (m.sourceIndex != null && map.has(m.sourceIndex)) m.sourceIndex = map.get(m.sourceIndex);
+      if (Array.isArray(m.children)) m.children.forEach((c) => { if (c && map.has(c.index)) c.index = map.get(c.index); });
+      if (m.type === "meta" && m.totalCount != null) m.totalCount = k;
+    }
+    return keep;
+  };
+  const depthOps = (s, kind) => {
+    const ops = []; let d = 0;
+    for (let i = 0; i < s.length; i++) {
+      if (s.startsWith("\\{", i)) { d++; i++; continue; }
+      if (s.startsWith("\\}", i)) { d--; i++; continue; }
+      const c = s[i];
+      if ("{([".includes(c)) { if (kind === "prod" && d === 0 && i > 5 && s.slice(0, i).endsWith("\\left") && /\\right[)\]}]$|\\right\\\}$/.test(s.slice(0, i - 5))) ops.push(i - 5); d++; }
+      else if ("})]".includes(c)) d--;
+      else if (kind === "pm" && d === 0 && i > 0 && (c === "+" || c === "-") && !/[=&(,]\s*$/.test(s.slice(0, i))) ops.push(i);
+      else if (kind === "times" && d === 0 && i > 0 && s.startsWith("\\times", i)) ops.push(i);
+    }
+    return ops;
+  };
+  window.__ovCandidates = (lx) => {
+    const out = [];
+    let hbIdx = -1;
+    lx.replace(HBRE, (all, a, F, N, C, body, z, off) => {
+      hbIdx++;
+      const al = body.match(/\$\\begin\{aligned\}([\s\S]*?)\\end\{aligned\}\$/);
+      if (!al) {
+        const segs = body.split(/\\hblinebreak\s*/);
+        const pre0 = (segs[0].match(/^(?:\\sffamily |\\hspace\*\{[0-9.]+mm\}|\\qquad|~|\s)*/) || [""])[0];
+        const rows = [], chains = [];
+        for (let i = 0; i < segs.length; i++) {
+          let s = unwrap(i === 0 ? segs[i].slice(pre0.length) : segs[i]);
+          let lab = "";
+          const lb = s.match(/^\s*\{?(?:\\fontsize\{[^}]*\}\{[^}]*\}\\selectfont\s*)?(\(\d+\)|[①-⑳])\s*\}?\s*/);
+          if (lb) { lab = `\\text{${lb[1]} }`; s = s.slice(lb[0].length); }
+          const x = s.match(/^\s*\{?\$([^$]*)\$\}?\s*$/); if (!x) { rows.length = 0; break; }
+          const eqs = []; let d = 0;
+          for (let j = 1; j < x[1].length; j++) { const c = x[1][j]; if (c === "{") d++; else if (c === "}") d--; else if (c === "=" && d === 0) eqs.push(j); }
+          if (!eqs.length) { rows.length = 0; break; }
+          const parts = [x[1].slice(0, eqs[0]), ...eqs.map((p, k) => x[1].slice(p, eqs[k + 1] ?? x[1].length))];
+          chains.push({ lab, parts });
+          rows.push(lab + parts[0].trimEnd() + "&" + parts[1].trim(), ...parts.slice(2).map((p) => "&" + p.trim()));
+        }
+        if (rows.length) {
+          const mk = (rs, p0 = pre0, n = N) => lx.slice(0, off) + a + (F || "") + `{${n}}{${C}}` + p0 + "$\\begin{aligned}" + rs.join("\\\\\n") + "\\end{aligned}$" + z + lx.slice(off + all.length);
+          out.push(mk(rows));
+          if (chains.length === 1 && !chains[0].lab) {
+            const [lhs, ...rhs] = chains[0].parts;
+            const together = /\\qquad/.test(pre0);
+            if (/^\s*\\therefore/.test(lhs)) out.push(mk(["\\therefore\\,\\,&" + lhs.replace(/^\s*\\therefore\s*(?:~|\\,)*/, "").trim(), ...rhs.map((p) => p.trim().replace(/^=/, "=&"))], pre0, "0mm"));
+            else out.push(mk([(together ? "\\qquad&" : "~~&") + lhs.trim(), ...rhs.map((p) => (together ? "~~" : "") + p.trim().replace(/^=/, "=&"))], pre0.replace(/\\qquad\s*/, ""), "0mm"));
+          }
+          const split = rows.flatMap((r) => {
+            const amp = r.indexOf("&"), rhs = r.slice(amp + 1), ops = depthOps(rhs, "pm");
+            return ops.length ? [r.slice(0, amp + 1) + rhs.slice(0, ops[ops.length - 1]).trimEnd(), `&\\hbright{$${rhs.slice(ops[ops.length - 1]).trim()}$}`] : [r];
+          });
+          if (split.length > rows.length) out.push(mk(split));
+        }
+        return all;
+      }
+      const rows = al[1].split(/\\\\(?![A-Za-z])/).map((r) => r.replace(/^\n/, ""));
+      const put = (newInner, newN, preFix) => {
+        let nb = body.replace(al[0], "$\\begin{aligned}" + newInner + "\\end{aligned}$");
+        if (preFix) nb = preFix(nb);
+        out.push(lx.slice(0, off) + a + (F || "") + `{${newN ?? N}}{${C}}` + nb + z + lx.slice(off + all.length));
+      };
+      const r0 = rows[0].match(/^(\s*)([^&]*?)&(=[\s\S]*)$/);
+      if (r0 && r0[2].trim() && rows.slice(1).every((r) => /^\s*&(?:=|\\hbright)/.test(r))) {
+        const lhs = r0[2].trim();
+        const together = /\\qquad\s*\{?\$\\begin\{aligned\}/.test(body) && !/^\\therefore/.test(lhs);
+        const conv = (r) => r.replace(/^(\s*)&=/, (s, sp) => sp + (together ? "~~" : "") + "=&");
+        let first;
+        if (/^\\therefore/.test(lhs)) first = ["\\therefore\\,\\," + "&" + lhs.replace(/^\\therefore\s*(?:~|\\,)*/, ""), "=&" + r0[3].slice(1)];
+        else first = [(together ? "\\qquad&" : "~~&") + lhs, (together ? "~~" : "") + "=&" + r0[3].slice(1)];
+        const unq = /^\\therefore/.test(lhs) ? null : (nb) => nb.replace(/\\qquad\s*(\{?\$\\begin\{aligned\})/, "$1");
+        put([...first, ...rows.slice(1).map(conv)].join("\\\\\n"), "0mm", unq);
+      }
+      rows.forEach((r, i) => {
+        const amp = r.indexOf("&"); if (amp < 0) return;
+        const rhs = r.slice(amp + 1);
+        const e = topIdx(rhs.replace(/^=/, " "), (s, j) => s[j] === "=" && j > 0);
+        if (e < 0) return;
+        const lead = r.slice(0, amp + 1);
+        const newLead = /=\s*&$/.test(lead) ? lead.replace(/^\s*(?:\\qquad)?/, (s) => (/\\qquad/.test(s) ? "~~" : s)) : "&";
+        const nr = [...rows];
+        nr.splice(i, 1, lead + rhs.slice(0, e).trimEnd(), newLead + (/=\s*&$/.test(lead) ? rhs.slice(e + 1).trim() : rhs.slice(e).trim()));
+        put(nr.join("\\\\\n"));
+      });
+      const order = rows.map((r, i) => [r.length, i]).sort((x, y) => y[0] - x[0]).slice(0, 2);
+      for (const [, i] of order) {
+        const r = rows[i]; const amp = r.indexOf("&"); if (amp < 0) continue;
+        const rhs = r.slice(amp + 1).replace(/\\hbright\{[\s\S]*\}\s*$/, "");
+        const tail = r.slice(amp + 1).slice(rhs.length);
+        for (const kind of ["pm", "prod", "times"]) {
+          const ops = depthOps(rhs, kind);
+          for (let k = 1; k <= Math.min(4, ops.length); k++) {
+            const at = ops[ops.length - k];
+            const moved = (kind === "prod" ? "\\times " : "") + rhs.slice(at).trim();
+            const nr = [...rows];
+            nr.splice(i, 1, r.slice(0, amp + 1) + rhs.slice(0, at).trimEnd() + tail, `&\\hbright{$${moved}$}`);
+            put(nr.join("\\\\\n"));
+          }
+        }
+      }
+      return all;
+    });
+    return out;
+  };
+})();
+window.__fixARun = (msgs, { start, apply = false, pdfjs, max = 12, wait = 2500 } = {}) => {
+  const sleep = (t) => new Promise((r) => setTimeout(r, t));
+  window.__job = { done: false, log: [], fix: [], left: [] };
+  (async () => {
+    try {
+      if (window.__K.key(msgs) !== "A") throw new Error(`${window.__K.nA} 파일이 아님(meta.textbook=${(msgs.find((m) => m.type === "meta") || {}).textbook || "없음"})`);
+      const orig = JSON.parse(JSON.stringify(msgs)), work = apply ? msgs : JSON.parse(JSON.stringify(msgs));
+      const lib = pdfjs || await window.__K.pdfjs();
+      const W = window.__where(work, { start });
+      const meta = work.find((m) => m.type === "meta"), done = work.find((m) => m.type === "done") || { type: "done" };
+      const one = async (lx, base) => {
+        const mm = JSON.parse(JSON.stringify(base)); mm.latex = lx; mm.index = 0; window.__clearRender(mm);
+        window.__loadMessages([meta, mm, done].map((x) => JSON.parse(JSON.stringify(x))), "one.json"); await sleep(wait);
+        return (await window.__K.exportRendered()).messages.find((x) => x.index === 0);
+      };
+      const warn = (r) => Math.max(0, ...((r && r.renderWarnings) || []).map((w) => w.overflowMM || 0));
+      const lines = async (r) => r && r.pdf ? (await window.__lineFind(lib, r, "A")).filter((f) => f[0] === "넘침").length : 0;
+      const targets = [];
+      for (const m of work) {
+        if (!m.latex || !m.pdf || m.type === "table" || (W[m.index] || "").includes("정답")) continue;
+        if (warn(m) > 0 || await lines(m)) targets.push(m);
+      }
+      __job.log.push(`넘친 메시지 ${targets.length}`);
+      for (const m of targets) {
+        const cands = window.__ovCandidates(m.latex);
+        let ok = null;
+        for (let i = 0; i < cands.length && i < max; i++) {
+          const r = await one(cands[i], m);
+          if (r && r.pdf && warn(r) === 0 && !(await lines(r))) { ok = [i, cands[i]]; break; }
+        }
+        if (ok) { m.latex = ok[1]; window.__clearRender(m); __job.fix.push({ where: W[m.index], index: m.index, rule: "넘침", what: `끊기·묶기 후보 ${ok[0] + 1}/${cands.length}` }); }
+        else __job.left.push(`${W[m.index]} 넘침 — 후보 ${cands.length}개로 못 풀었음(사람 확인)`);
         __job.log.push(`${W[m.index]} 끝`);
       }
       window.__loadMessages(apply ? work : orig, apply ? "fixed.json" : "original.json");
