@@ -1,5 +1,5 @@
-// page-kit v2026.10.29-0102
-window.__kitBuilt = "v2026.10.29-0102";
+// page-kit v2026.10.29-0112
+window.__kitBuilt = "v2026.10.29-0112";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 시작 한 줄을 다시 실행"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -509,7 +509,7 @@ window.__lineRules = (m, W, H, ws, cut = false, vendor = "") => {
     if (r.x1 > W + tol) out.push(["넘침", k, `줄 끝이 칸 밖 ${((r.x1 - W) / MM).toFixed(1)}mm`, snip]);
     if (r.x0 < -tol) out.push(["넘침", k, `줄 시작이 칸 왼쪽 밖 ${(-x0mm).toFixed(1)}mm`, snip]);
     const linedUp = rows.some((o, j) => j !== k && Math.abs(o.x0 - r.x0) < 1);
-    const inAl = gak && lx.includes("\\begin{aligned}") && !HAN.test(r.text);
+    const inAl = lx.includes("\\begin{aligned}") && !HAN.test(r.text);
     if (left > 3 && right > 3 && Math.abs(left - right) < 1.5 && r.x1 - r.x0 < W - 6 && !linedUp && !inAl) out.push(["가운데", k, `왼쪽 ${(left / MM).toFixed(1)}mm · 오른쪽 ${(right / MM).toFixed(1)}mm`, snip]);
     if (HAN.test(r.text[0] || "") && x0mm > 0.8 && !stopList.some((s) => Math.abs(x0mm - s) < 0.5)) out.push(["글줄 시작", k, `시작 ${x0mm.toFixed(1)}mm (맞는 자리 ${stopList.map(g).join(", ")})`, snip]);
   });
