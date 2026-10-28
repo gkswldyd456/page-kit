@@ -1,5 +1,5 @@
-// page-kit v2026.10.29-0847
-window.__kitBuilt = "v2026.10.29-0847";
+// page-kit v2026.10.29-0854
+window.__kitBuilt = "v2026.10.29-0854";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -26,6 +26,7 @@ window.__kitBadge = () => {
   if (typeof document === "undefined" || !document.body) return;
   let d = document.getElementById("__kitBadge");
   if (!d) {
+    for (const t of document.body.querySelectorAll(":scope > div")) if (t.style.top === "8px" && t.style.right === "8px" && t.style.position === "fixed") t.remove();
     d = document.createElement("div"); d.id = "__kitBadge"; document.body.appendChild(d);
     clearInterval(window.__kitBadgeT); window.__kitBadgeT = setInterval(window.__kitBadge, 3000);
   }
@@ -33,7 +34,7 @@ window.__kitBadge = () => {
   const [bg, fg] = bad ? ["#c62828", "#fff"] : warn ? ["#ffb300", "#000"] : ["#2e7d32", "#fff"];
   const txt = bad ? s : warn ? "⚠ 도구 켜짐 · " + s.split(" · 주의: ").slice(1).join(" · ") : `✓ 도구 켜짐 ${window.__kitCfg.ver}`;
   if (d.textContent !== txt) d.textContent = txt;
-  d.style.cssText = `position:fixed;left:8px;bottom:8px;z-index:99999;pointer-events:none;max-width:560px;background:${bg};color:${fg};padding:4px 10px;border-radius:6px;font:bold 12px sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4)`;
+  d.style.cssText = `position:fixed;right:12px;top:40px;z-index:99999;pointer-events:none;max-width:560px;background:${bg};color:${fg};padding:4px 10px;border-radius:6px;font:bold 12px sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4)`;
 };
 if (typeof setTimeout === "function") setTimeout(() => { try { window.__kitBadge(); } catch (e) {  } }, 0);
 window.__show = (x, n = 4000) => (typeof x === "string" ? x : JSON.stringify(x)).replace(/&/g, "＆").slice(0, n);
