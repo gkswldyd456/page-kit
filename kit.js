@@ -1,5 +1,5 @@
-// page-kit v2026.10.29-1219
-window.__kitBuilt = "v2026.10.29-1219";
+// page-kit v2026.10.29-1232
+window.__kitBuilt = "v2026.10.29-1232";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -250,7 +250,6 @@ window.__div = (() => {
     if ((msgs[i].latex || "").includes("teacherink")) return [7, 4.5];
     for (let j = i - 1; j >= 0; j--) {
       const t = msgs[j]; if (t.type === "meta" || t.type === "done" || isDiv(t) || TEACH(t)) continue;
-      if (["contents", "contents_D1", "conceptUp", "checkpoint", "title", "subtitle_c"].includes(t.type)) return null;
       const s = /\\setmyfontsize\{([\d.]+)pt\}/.exec(t.latex || ""); if (s) return [+s[1], null];
     }
     return null;
