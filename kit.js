@@ -1,5 +1,5 @@
-// page-kit v2026.10.29-1959
-window.__kitBuilt = "v2026.10.29-1959";
+// page-kit v2026.10.29-2016
+window.__kitBuilt = "v2026.10.29-2016";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -843,8 +843,11 @@ window.__check = (msgs, { start } = {}) => {
         for (const x of lx.matchAll(/\\hblinebreak\s*(?:(?:\\hspace\*\{0\.01mm\})?\\tab\s*)+또는/g)) add(m, "GW31", "정답 줄 둘째 줄 '또는' 앞 탭 — 탭 빼기", x[0].slice(0, 60));
       } else if (m.type === "explanation")
         for (const x of lx.matchAll(/\$\s*(?:(?:\\hspace\*\{0\.01mm\})?\\tab\s*)+또는/g)) add(m, "GW31", "'또는' 앞 탭(탭으로 민 접힘) — 줄 바꿈으로", x[0].slice(0, 60));
-      if (m.type === "table" && msgs.some((x) => x.type === "explanation") && lx.includes("\\boldsymbol{"))
-        add(m, "GW32", `해설 표 안 볼드 ${lx.split("\\boldsymbol{").length - 1}곳 — 벗기기`, lx.slice(lx.indexOf("\\boldsymbol{")).slice(0, 60));
+      const cells = ((m.tableData && m.tableData.cells) || []).flatMap((r) => r || []).map((c) => (c && c.latex) || "").join("");
+      if (m.type === "table" && msgs.some((x) => x.type === "explanation") && (lx.includes("\\boldsymbol{") || cells.includes("\\boldsymbol{"))) {
+        const src = lx.includes("\\boldsymbol{") ? lx : cells;
+        add(m, "GW32", `해설 표 안 볼드 ${src.split("\\boldsymbol{").length - 1}곳 — 벗기기`, src.slice(src.indexOf("\\boldsymbol{")).slice(0, 60));
+      }
       spacing(m, "GW12");
     }
   }
@@ -1077,7 +1080,7 @@ window.__vb = (() => {
       for (const n of r.notes || []) out.push({ where: W[m.index] || "?", index: m.index, rule, skipped: true, what: n });
       if (r.latex === m.latex || !r.changes || !r.changes.length) continue;
       out.push({ where: W[m.index] || "?", index: m.index, rule, n: r.changes.length, before: r.changes[0][0], after: r.changes[0][1], changes: r.changes });
-      if (apply) { m.latex = r.latex; window.__clearRender && window.__clearRender(m); }
+      if (apply) { m.latex = r.latex; window.__clearRender && window.__clearRender(m); if (r.also) r.also(m); }
     }
     return out;
   };
@@ -1393,7 +1396,8 @@ window.__fixGW32 = window.__vb.runner("GW32", window.__vb.isB, (m, ctx) => {
   if (!(ctx.hasExpl ??= ctx.msgs.some((x) => x.type === "explanation"))) return null;
   const latex = window.__unbold(m.latex);
   const n = (m.latex.match(/\\boldsymbol\{/g) || []).length;
-  return { latex, changes: [[(m.latex.match(/\\boldsymbol\{[^}]*\}/) || [""])[0], `볼드 ${n}곳 벗김`]] };
+  const also = (mm) => { for (const row of (mm.tableData && mm.tableData.cells) || []) for (const c of row || []) if (c && typeof c.latex === "string" && c.latex.includes("\\boldsymbol{")) { c.latex = window.__unbold(c.latex); delete c.pdf; delete c.hash; } };
+  return { latex, also, changes: [[(m.latex.match(/\\boldsymbol\{[^}]*\}/) || [""])[0], `볼드 ${n}곳 벗김${m.tableData ? "(표 칸 포함)" : ""}`]] };
 });
 window.__fixB = (msgs, { apply = false, start } = {}) => {
   const G = window.__vb;
