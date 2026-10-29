@@ -1,5 +1,5 @@
-// page-kit v2026.10.29-1733
-window.__kitBuilt = "v2026.10.29-1733";
+// page-kit v2026.10.29-1811
+window.__kitBuilt = "v2026.10.29-1811";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -897,7 +897,7 @@ window.__lineRules = (m, W, H, ws, cut = false, vendor = "") => {
     const nb = [k - 1, k + 1].filter((j) => j < rows.length && isMath[j]).map((j) => (rows[j].x0 / MM).toFixed(1));
     if (nb.length) { out.push(["수식 줄 시작", k, `이 줄만 0mm, 앞뒤 수식 줄은 ${nb.join(", ")}mm`, cut30(r.text)]); seen.add(k); }
   });
-  if (/\\qquad\s*\$/.test(lx))
+  if (!gak && /\\qquad\s*\$/.test(lx))
     rows.forEach((r, k) => {
       if (!seen.has(k) && isMath[k] && !isEq[k] && r.x0 / MM <= 0.8 && k > 0) out.push(["4칸 빠짐", k, "원본은 \\qquad 들여쓰기인데 0mm 에서 시작(식이 넓어 넘어감)", cut30(r.text)]);
     });
