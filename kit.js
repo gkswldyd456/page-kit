@@ -1,5 +1,5 @@
-// page-kit v2026.10.29-1232
-window.__kitBuilt = "v2026.10.29-1232";
+// page-kit v2026.10.29-1724
+window.__kitBuilt = "v2026.10.29-1724";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -145,6 +145,15 @@ window.__where = (msgs, { start } = {}) => {
   }
   return out;
 };
+window.__rowSplit = (s) => {
+  const out = []; let d = 0, cur = "";
+  for (let i = 0; i < s.length;) {
+    if (s[i] === "\\" && s[i + 1] === "\\" && d === 0 && !/[A-Za-z]/.test(s[i + 2] || "")) { out.push(cur, "\\\\"); cur = ""; i += 2; continue; }
+    if (s[i] === "\\") { cur += s.slice(i, i + 2); i += 2; continue; }
+    d += (s[i] === "{") - (s[i] === "}"); cur += s[i]; i++;
+  }
+  return [...out, cur];
+};
 window.__fixT2 = (msgs, { apply = false, start } = {}) => {
   const meta = msgs.find((m) => m.type === "meta");
   if (meta && meta.textbook && meta.textbook !== window.__K.A) return [];
@@ -154,7 +163,7 @@ window.__fixT2 = (msgs, { apply = false, start } = {}) => {
     const lx = m.latex || "";
     let changed = false;
     const next = lx.replace(/\\begin\{aligned\}([\s\S]*?)\\end\{aligned\}/g, (all, inner) => {
-      const rows = inner.split(/(\\\\(?![A-Za-z]))/);
+      const rows = window.__rowSplit(inner);
       const lead = rows[0].match(/^\s*\\therefore(?:~|\\,|\s)*&/);
       if (!lead || /=/.test(rows[0].slice(lead[0].length))) return all;
       const conts = rows.filter((r, i) => i % 2 === 0 && i > 0);
@@ -190,6 +199,164 @@ window.__fixRe = (re, to) => (msgs, { apply = false, start } = {}) => {
       if (m.attrs && typeof m.attrs.boxAnswer === "string") m.attrs.boxAnswer = m.attrs.boxAnswer.replace(re, to);
       window.__clearRender && window.__clearRender(m);
     }
+  }
+  return out;
+};
+window.__CW27 = /\{\}_\{\\,\s*([^{}]*)\}\s*\\mathrm\{([CPH])\}_\{(?:\\,\s*)?|\{\}_\{([^{}]*)\}\s*\\mathrm\{([CPH])\}_\{\\,\s*/g;
+window.__fixCW27 = window.__fixRe(window.__CW27, "{}_{$1$3}\\mathrm{$2$4}_{");
+window.__cw28 = (lx) => lx.replace(/\\begin\{cases\}([\s\S]*?)\\end\{cases\}/g, (all, inner) => {
+  if (!/[㉠-㉭]/.test(inner) || /\\hbright/.test(inner)) return all;
+  const sp = "(?:\\^\\{\\{\\}\\^\\{\\}\\}|\\{\\}\\^\\{\\{\\}\\^\\{\\}\\}|\\{\\}_\\{\\{\\}_\\{\\}\\}|\\\\,|~|\\s)*";
+  const rows = window.__rowSplit(inner).filter((_, i) => i % 2 === 0).map((r) => r.trim()).filter((r) => r && !/^(?:\\,|\s)*$/.test(r));
+  const out = [];
+  for (const r of rows) {
+    const x = r.match(new RegExp("^" + sp + "([\\s\\S]*?)\\s*&?\\s*" + sp + "\\\\cdots\\s*(?:\\\\,)?\\s*\\\\text\\{([㉠-㉭])\\}\\s*$"));
+    if (!x) return all;
+    out.push(`\\,${x[1].trim()} \\hbright{$\\cdots $ ${x[2]}}`);
+  }
+  return "\\begin{cases}" + out.join("\\\\") + "\\\\\n\\end{cases}";
+});
+window.__fixCW28 = (msgs, { apply = false, start } = {}) => {
+  if (window.__K.key(msgs) !== "A") return [];
+  const W = window.__where ? window.__where(msgs, { start }) : {};
+  const out = [];
+  for (const m of msgs) {
+    if (!m.latex || !m.latex.includes("\\begin{cases}")) continue;
+    const next = window.__cw28(m.latex);
+    if (next === m.latex) continue;
+    const at = m.latex.indexOf("\\begin{cases}");
+    out.push({ where: W[m.index] || "?", index: m.index, rule: "CW28", before: m.latex.slice(at, at + 90), after: next.slice(at, at + 90) });
+    if (apply) { m.latex = next; window.__clearRender && window.__clearRender(m); }
+  }
+  return out;
+};
+window.__CW31 = /(?:\\hspace\*\{0\.01mm\})?\\tab\s*(?:\{\$\\cdots\s*\$\s*([㉠-㉭])~~\\ding\{222\}\s*(\$[^$]*\$)\}(\\%)?|\$\\cdots\s*\$\s*([㉠-㉭])~~\\ding\{222\}\s*([^\\{}$]*?))\s*(?=\\end\{hangblock\})/g;
+window.__cw31 = (lx) => {
+  if (!lx.match(window.__CW31)) return lx;
+  return lx.replace(window.__CW31, (all, c1, v, pct, c2, mark) => c1 ? `\\hspace*{1mm}{$\\cdots $ ${c1}}\\hbright{\\ding{222} {${v}}${pct || ""}}` : `\\hspace*{1mm}$\\cdots $ ${c2}\\hbright{\\ding{222} ${mark.trim()}}`)
+    .replace(/\\hbright\{(\{?)\$\\cdots\s*\$\s*([㉠-㉭])(\}?)\}(?=\s*\\end\{hangblock\})/g, (all, a, c, b) => `\\hspace*{1mm}${a}$\\cdots $ ${c}${b}`);
+};
+window.__fixCW31 = (msgs, { apply = false, start } = {}) => {
+  if (window.__K.key(msgs) !== "A") return [];
+  const W = window.__where ? window.__where(msgs, { start }) : {};
+  const out = [];
+  for (const m of msgs) {
+    if (!m.latex) continue;
+    const next = window.__cw31(m.latex);
+    if (next === m.latex) continue;
+    const at = m.latex.search(window.__CW31);
+    out.push({ where: W[m.index] || "?", index: m.index, rule: "CW31", before: m.latex.slice(Math.max(0, at - 30), at + 60), after: next.slice(Math.max(0, at - 30), at + 70) });
+    if (apply) { m.latex = next; window.__clearRender && window.__clearRender(m); }
+  }
+  return out;
+};
+window.__cw15 = (msgs) => {
+  const HB = /(\\begin\{hangblock\})(\[[^\]]*\])?\{([^}]*)\}\{([^}]*)\}([\s\S]*?)(\\end\{hangblock\})/g;
+  const mm = (s) => parseFloat(s) || 0, fmt = (x) => `${Math.round(x * 10) / 10}mm`;
+  const shift = (lx, L) => lx.replace(HB, (all, a, F, N, C, body, z) => a + `[${fmt(Math.max(0, mm((F || "[0mm]").slice(1, -1)) - L))}]` + `{${fmt(Math.max(0, mm(N) - L))}}{${C}}` + body + z);
+  const out = [], drop = new Set();
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if ((m.type !== "contents_D1" && m.type !== "analysis_D1") || !m.latex) continue;
+    const Ns = [...m.latex.matchAll(HB)].map((x) => mm(x[3]));
+    if (!Ns.length) continue;
+    let L = Math.min(...Ns);
+    if (![12.9, 8.9, 8.5].some((w) => Math.abs(L - w) < 0.05)) continue;
+    const r = { i, L, latex: shift(m.latex, L), merged: [] };
+    for (let j = i + 1; j < msgs.length && msgs[j].type === "contents"; j++) {
+      const hb = [...(msgs[j].latex || "").matchAll(HB)];
+      if (!hb.length || hb.some((x) => mm((x[2] || "[0mm]").slice(1, -1)) < L - 0.5 || x[4] !== "0")) break;
+      r.latex = r.latex.replace(/\s*$/, "\n" + hb.map((x) => shift(x[0], L)).join("\n") + "\n");
+      r.merged.push(j); drop.add(j);
+    }
+    out.push(r);
+  }
+  return { out, drop };
+};
+window.__fixCW15 = (msgs, { apply = false, start } = {}) => {
+  if (window.__K.key(msgs) !== "A") return apply ? msgs : [];
+  const W = window.__where ? window.__where(msgs, { start }) : {};
+  const { out, drop } = window.__cw15(msgs);
+  const list = out.map((r) => ({ where: W[msgs[r.i].index] || "?", index: msgs[r.i].index, rule: "CW15", what: `상자 내어쓰기 −${r.L}mm` + (r.merged.length ? ` · 뒷문단 ${r.merged.length}개 합침(${r.merged.map((j) => W[msgs[j].index]).join(", ")})` : "") }));
+  if (!apply) return list;
+  const work = JSON.parse(JSON.stringify(msgs));
+  for (const r of out) { work[r.i].latex = r.latex; window.__clearRender && window.__clearRender(work[r.i]); }
+  if (!drop.size) return work;
+  const keep = work.filter((_, i) => !drop.has(i)), map = new Map();
+  let k = 0;
+  for (const m of keep) { if (m.type === "meta" || m.type === "done") continue; map.set(m.index, k); m.index = k++; }
+  for (const m of keep) {
+    if (m.sourceIndex != null && map.has(m.sourceIndex)) m.sourceIndex = map.get(m.sourceIndex);
+    if (Array.isArray(m.children)) m.children.forEach((c) => { if (c && map.has(c.index)) c.index = map.get(c.index); });
+    if (m.type === "meta" && m.totalCount != null) m.totalCount = k;
+  }
+  return keep;
+};
+window.__CW14 = {
+  analysis: { "①": 3.3, "(1)": 3.5, "(ⅰ)": 4.4 }, conceptUp: { "①": 3.3, "(1)": 3.5, "(ⅰ)": 4.4 },
+  explain_t: { "①": 2.6, "(1)": 3.3, "(ⅰ)": 3.6, "ㄱ.": 2.9 },
+  explanation: { "①": 4.1, "(1)": 5.1, "(ⅰ)": 6.1, "ㄱ.": 5.2 },
+  question: { "①": 4.2, "(1)": 5.2, "(ⅰ)": 6.2, "ㄱ.": 5.3 }, fillSolution: { "①": 4.2, "(1)": 5.2, "(ⅰ)": 6.2, "ㄱ.": 5.3 },
+};
+window.__cw14 = (m) => {
+  const tb = window.__CW14[m.type], out = [];
+  if (!tb || !m.latex) return out;
+  const LAB = /^(?:\\sffamily\s*|\\bfseries\s*|\\textmd\s*|\{\\fontsize\{[^}]*\}\{[^}]*\}\\selectfont\s*|\\hspace\*\{[^}]*\}\s*|\{|\s)*(?:\\textrm\{)?(\([ⅰ-ⅻ]+\)|\(\d+\)|[①-⑳]|[ㄱ-ㅎ]\.)/;
+  for (const h of m.latex.matchAll(/\\begin\{hangblock\}(?:\[[^\]]*\])?\{([^}]*)\}\{[^}]*\}([\s\S]*?)\\end\{hangblock\}/g)) {
+    const lab = (h[2].match(LAB) || [])[1];
+    if (!lab) continue;
+    const kind = /^\([ⅰ-ⅻ]/.test(lab) ? "(ⅰ)" : /^\(\d/.test(lab) ? "(1)" : /^[①-⑳]/.test(lab) ? "①" : "ㄱ.";
+    const want = tb[kind], N = parseFloat(h[1]) || 0;
+    if (want == null || !N) continue;
+    const rest = h[2].slice(h[2].indexOf(lab) + lab.length);
+    if (LAB.test(rest.replace(/^\}?\s*/, ""))) continue;
+    if (Math.abs(N - want) > 0.05) out.push({ lab: kind, N, want, snip: h[2].slice(0, 40), src: h[0] });
+  }
+  return out;
+};
+window.__cw30 = (lx) => {
+  let n = 0;
+  const HB = /\\begin\{hangblock\}(?:\[[^\]]*\])?\{([^}]*)\}\{[^}]*\}([\s\S]*?)\\end\{hangblock\}/g;
+  const hbs = [...lx.matchAll(HB)];
+  let out = lx;
+  for (let i = hbs.length - 1; i > 0; i--) {
+    const prev = hbs[i - 1], cur = hbs[i];
+    const lab = prev[2].match(/^(?:\\sffamily\s*)?\\hspace\*\{([0-9.]+)mm\}\s*(?:\\sffamily\s*)?(?:\\textsf\{)?(?:\{?\\fontsize\{[^}]*\}\{[^}]*\}\\selectfont\s*)?\(\d+\)/);
+    const body = cur[2].match(/^(\\hspace\*\{[0-9.]+mm\})((?:\s*\\hspace\*\{0\.01mm\}\\tab\s*)+)/);
+    if (!lab || !body || !(parseFloat(prev[1]) > 0)) continue;
+    const N = parseFloat(prev[1]), H = parseFloat(lab[1]), L = +(N - H).toFixed(1);
+    const nb = `\\begin{hangblock}[${L}mm]{${N}mm}{0}\\hspace*{${H}mm}` + cur[2].slice(body[0].length).replace(/^\s+/, "") + "\\end{hangblock}";
+    out = out.slice(0, cur.index) + nb + out.slice(cur.index + cur[0].length);
+    n++;
+  }
+  return { lx: out, n };
+};
+window.__fixCW30 = (msgs, { apply = false, start } = {}) => {
+  if (window.__K.key(msgs) !== "A") return [];
+  const W = window.__where ? window.__where(msgs, { start }) : {};
+  const out = [];
+  for (const m of msgs) {
+    if (m.type !== "contents" || !m.latex) continue;
+    const r = window.__cw30(m.latex);
+    if (!r.n) continue;
+    out.push({ where: W[m.index] || "?", index: m.index, rule: "CW30", n: r.n, what: `라벨 항목 뒷문단 ${r.n}개 → 라벨 글 자리` });
+    if (apply) { m.latex = r.lx; window.__clearRender && window.__clearRender(m); }
+  }
+  return out;
+};
+window.__fixCW14 = (msgs, { apply = false, start } = {}) => {
+  if (window.__K.key(msgs) !== "A") return [];
+  const W = window.__where ? window.__where(msgs, { start }) : {};
+  const out = [];
+  for (const m of msgs) {
+    if (m.type !== "explain_t") continue;
+    let lx = m.latex;
+    for (const x of window.__cw14(m).filter((x) => x.N > x.want * 2 && x.N > x.want + 4)) {
+      const fixed = x.src.replace(/^(\\begin\{hangblock\}(?:\[[^\]]*\])?\{)[^}]*\}/, (a, h) => `${h}${x.want}mm}`);
+      lx = lx.replace(x.src, () => fixed);
+      out.push({ where: W[m.index] || "?", index: m.index, rule: "CW14", what: `라벨 ${x.lab} 폭 ${x.N} → ${x.want}(서버 값 망가짐)` });
+    }
+    if (apply && lx !== m.latex) { m.latex = lx; window.__clearRender && window.__clearRender(m); }
   }
   return out;
 };
@@ -235,6 +402,42 @@ window.__fixCW19 = (msgs, { apply = false, start } = {}) => {
       if (m.attrs && typeof m.attrs.boxAnswer === "string") m.attrs.boxAnswer = m.attrs.boxAnswer.replace(__PMAT, __pmatFix);
       window.__clearRender && window.__clearRender(m);
     }
+  }
+  return out;
+};
+window.__colonFix = (lx) => {
+  let n = 0;
+  const at = [];
+  const HB = /(\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\})([\s\S]*?)(\\end\{hangblock\})/g;
+  const bare = (s) => s.replace(/\\[A-Za-z]+\*?(?:\[[^\]]*\])?(?:\{[^{}]*\})*/g, "").replace(/[{}\s]/g, "");
+  const seg = (s) => {
+    const p = s.split(/(\$[^$]*\$)/);
+    for (let i = 0; i < p.length; i += 2) {
+      p[i] = p[i].replace(/( *):( *)/g, (all, a, b, off, str) => {
+        const before = p.slice(0, i).join("") + str.slice(0, off), after = str.slice(off + all.length) + p.slice(i + 1).join("");
+        if (str[off - 1] === "\\" || /(?:\\tab|~)\s*$/.test(before) || /^\s*(?:\\tab|~)/.test(after)) return all;
+        if (!bare(before) || !bare(after)) return all;
+        if (a === " " && b === " ") return all;
+        n++; at.push((before.slice(-12) + ":" + after.slice(0, 12)).replace(/\s+/g, " "));
+        return " : ";
+      });
+    }
+    return p.join("");
+  };
+  const out = lx.replace(HB, (all, head, body, tail) => head + body.split(/(\\hblinebreak)/).map((s, i) => i % 2 ? s : seg(s)).join("") + tail);
+  return { lx: out, n, at };
+};
+window.__fixColon = (msgs, { apply = false, start } = {}) => {
+  const V = window.__K.key(msgs);
+  if (!V) return [];
+  const W = window.__where ? window.__where(msgs, { start }) : {};
+  const out = [];
+  for (const m of msgs) {
+    if (!m.latex || !m.latex.includes(":")) continue;
+    const r = window.__colonFix(m.latex);
+    if (!r.n) continue;
+    out.push({ where: W[m.index] || "?", index: m.index, rule: V === "A" ? "CW12" : "GW28", n: r.n, before: r.at[0], after: r.at[0].replace(/ *: */, " : ") });
+    if (apply) { m.latex = r.lx; window.__clearRender && window.__clearRender(m); }
   }
   return out;
 };
@@ -452,9 +655,15 @@ window.__check = (msgs, { start } = {}) => {
       nb(m, (k) => k === "NB-PARA" ? "CW09" : "CW10");
       const lx = m.latex || "";
       for (const a of lx.matchAll(window.__CW17)) add(m, "CW17", "∴ 뒤 \\,\\,\\,\\, → ~ (__fixCW17)", lx.slice(Math.max(0, a.index - 20), a.index + 60));
+      for (const x of window.__cw14(m)) add(m, "CW14", `라벨 ${x.lab} 폭 ${x.N} → 표 ${x.want}`, x.snip);
+      if ((m.type === "contents_D1" || m.type === "analysis_D1") && window.__cw15([m]).out.length) add(m, "CW15", "예시·참고 상자 내어쓰기에 [참고] 글자 폭이 남음 (__fixCW15)", lx.slice(lx.indexOf("\\begin{hangblock}")).slice(0, 60));
+      if (lx.includes("\\begin{cases}") && window.__cw28(lx) !== lx) add(m, "CW28", "연립 ㉠㉡ 꼬리 → 한 칸 + \\hbright (__fixCW28)", lx.slice(lx.indexOf("\\begin{cases}")).slice(0, 90));
+      for (const a of lx.matchAll(window.__CW27)) add(m, "CW27", "조합 기호 첨자 앞 \\, 지움 (__fixCW27)", a[0]);
+      for (const a of lx.matchAll(window.__CW31)) add(m, "CW31", "⋯㉠ 꼬리 + 채점 꼬리 한 줄 → \\hspace*{D} + \\hbright (__fixCW31 · 렌더로 D)", lx.slice(Math.max(0, a.index - 30), a.index + a[0].length));
       for (const a of lx.matchAll(window.__CW18)) add(m, "CW18", `${a[1]}\\,\\left( → ${a[1]}\\left( (__fixCW18)`, lx.slice(Math.max(0, a.index - 30), a.index + 40));
       for (const a of lx.matchAll(window.__PMAT)) if (__pmatBad(a)) add(m, "CW19", "행렬 꼴(빈 열·~·칸) (__fixCW19)", a[0].slice(0, 80));
       if (window.__div.isDiv(m)) for (const [w, s] of window.__div.issues(msgs, msgs.indexOf(m), false)) add(m, "CW25", w + " (__fixDiv)", s);
+      for (const at of window.__colonFix(lx).at) add(m, "CW12", "글 콜론 앞뒤 빈칸 한 칸 (__fixColon)", at);
       spacing(m, "CW13");
     }
     msgs.forEach((m, i) => {
@@ -592,6 +801,7 @@ window.__check = (msgs, { start } = {}) => {
       }
       for (const a of lx.matchAll(/\$\\begin\{array\}\{c\}((?:(?!\\end\{array\})[\s\S])*)\\end\{array\}\$/g))
         if (a[1].split(ROW).filter((r) => r.trim()).length === 1) add(m, "GW20", "한 줄 array 감싸기 → $식$ 으로 풀기", a[0].slice(0, 100).replace(/\n/g, " "));
+      for (const at of window.__colonFix(lx).at) add(m, "GW28", "글 콜론 앞뒤 빈칸 한 칸 (__fixColon)", at);
       spacing(m, "GW12");
     }
   }
@@ -633,6 +843,12 @@ window.__lineFind = async (lib, m, vendor = "") => {
   if (!ws.length) return [];
   const cut = m.type !== "table" && Math.max(...ws.map((w) => w.base)) > H + 0.5;
   return window.__lineRules(m, W, H, ws, cut, vendor);
+};
+window.__DAN_A = ["question", "questionTitle", "contents", "contents_D1", "conceptUp", "analysis", "fillSolution"];
+window.__danLim = (rows, k, W, mm = 1) => {
+  if (k < 3) return W;
+  const pw = Math.max(...rows.slice(0, k).map((x) => x.x1)), near = (x) => x.x1 >= pw - 1.5 * mm;
+  return pw < W - 5 * mm && near(rows[k - 2]) && rows.slice(0, k).filter(near).length >= 2 ? pw : W;
 };
 window.__lineRules = (m, W, H, ws, cut = false, vendor = "") => {
   const MM = 72 / 25.4, HAN = /[가-힣]/, GRID = 20, DAN_GAP = 1.5;
@@ -676,14 +892,14 @@ window.__lineRules = (m, W, H, ws, cut = false, vendor = "") => {
     rows.forEach((r, k) => {
       if (!seen.has(k) && isMath[k] && !isEq[k] && r.x0 / MM <= 0.8 && k > 0) out.push(["4칸 빠짐", k, "원본은 \\qquad 들여쓰기인데 0mm 에서 시작(식이 넓어 넘어감)", cut30(r.text)]);
     });
-  if (gak && m.type === "question") {
+  if (gak ? m.type === "question" : vendor === "A" && window.__DAN_A.includes(m.type)) {
     const k = rows.findIndex((r) => r.text.includes("(단"));
     if (k >= 0) {
       const r = rows[k], w = r.w.find((v) => v.t.includes("(단")), x = charX(w, len(w.t.slice(0, w.t.indexOf("(단"))));
       if (lx.includes("\\hbright{(단")) {
         if (k > 0 && x - r.x0 <= 1) {
           const prev = rows[k - 1], cw = (r.x1 - r.x0) / MM, need = prev.x1 / MM + DAN_GAP + cw;
-          if (need <= W / MM) out.push(["(단,)", k, `붙일 수 있음(땡기기) — 앞 줄 끝 ${(prev.x1 / MM).toFixed(1)} + 빈칸 ${g(DAN_GAP)} + 조건 ${cw.toFixed(1)} = ${need.toFixed(1)} ≤ 칸 ${(W / MM).toFixed(1)}mm`, cut30(r.text)]);
+          if (need <= window.__danLim(rows, k, W, MM) / MM) out.push(["(단,)", k, `붙일 수 있음(땡기기) — 앞 줄 끝 ${(prev.x1 / MM).toFixed(1)} + 빈칸 ${g(DAN_GAP)} + 조건 ${cw.toFixed(1)} = ${need.toFixed(1)} ≤ 칸 ${(W / MM).toFixed(1)}mm`, cut30(r.text)]);
         }
       } else {
         const tail = r.text.slice(r.text.indexOf("(단"));
@@ -1077,6 +1293,7 @@ window.__vbRenderList = (msgs, { start, warn } = {}) => {
     for (const b of window.__vbStepBlocks(m)) if (b.rows.length > 1) out.push({ where: w, index: m.index, rule: "GW17", what: `계단 앞 줄 ${b.rows.length - 1}개 \\hspace* D(렌더로 재기)` });
     if (window.__vbDanFind(m)) out.push({ where: w, index: m.index, rule: "GW24", what: "(단, …) 붙일지·뗄지(렌더로 재기)" });
     if (window.__vbColFind(m).length) out.push({ where: w, index: m.index, rule: "GW25", what: "좌우 나열 둘째 열 자리(렌더로 재기)" });
+    if (window.__vbTailFind(m.latex).length) out.push({ where: w, index: m.index, rule: "GW29", what: "꼬리·괄호 설명이 줄 끝에 들어가나(렌더로 재기)" });
     const ov = warn ? warn.get(m.index) : Math.max(0, ...((m.renderWarnings || []).map((x) => x.overflowMM || 0)));
     if (ov > 0 && m.type !== "table") out.push({ where: w, index: m.index, rule: "넘침", what: `${ov}mm 넘침 — 끊기 후보 ${window.__vbCutCands(m).length}개(렌더로 고름)` });
   }
@@ -1139,13 +1356,47 @@ window.__vbFindSeq = (rows, latexLines) => {
   return -1;
 };
 window.__vbRelX = (row) => { const w = row.w.find((x) => /^[=<>≤≥≠]/.test(x.t)); return w ? w.x0 : null; };
-window.__vbDanFind = (m) => {
-  if (m.type !== "question" || !/\(단,/.test(m.latex || "")) return null;
+window.__vbDanFind = (m, V = "B") => {
+  if (!(V === "A" ? window.__DAN_A.includes(m.type) : m.type === "question") || !/\(단,/.test(m.latex || "")) return null;
   const lx = m.latex;
-  const det = lx.match(/(\\end\{hangblock\})(\s*)\\begin\{hangblock\}\[0mm\]\{0mm\}\{0\}\\hbright\{(\(단,[\s\S]*?\))\}\\end\{hangblock\}/);
-  if (det) return { attached: false, cond: det[3], at: det.index, src: det[0] };
-  const att = lx.match(/ (\(단,(?:[^()]|\([^()]*\))*\))(\\end\{hangblock\})/);
-  if (att) return { attached: true, cond: att[1], at: att.index, src: att[0] };
+  const det = V === "A" ? lx.match(/(\\end\{hangblock\})(\s*)\\begin\{hangblock\}\[0mm\]\{[0-9.]+mm\}\{0\}(\\sffamily\s*)?\\hbright\{(\(단,[\s\S]*?\))\}\\end\{hangblock\}/)
+    : lx.match(/(\\end\{hangblock\})(\s*)\\begin\{hangblock\}\[0mm\]\{0mm\}\{0\}()\\hbright\{(\(단,[\s\S]*?\))\}\\end\{hangblock\}/);
+  const nth = (at) => (lx.slice(0, at).match(/\(단,/g) || []).length;
+  if (det && V !== "A") return { attached: false, cond: det[4], at: det.index, src: det[0], nth: nth(det.index) };
+  const tailAt = (i) => {
+    const t = lx.slice(i).match(/^\s*\\hbtail\{/);
+    if (!t) return "";
+    let d = 1, j = i + t[0].length;
+    for (; j < lx.length && d; j++) { if (lx[j] === "\\") { j++; continue; } d += (lx[j] === "{") - (lx[j] === "}"); }
+    return lx.slice(i, j);
+  };
+  if (V === "A") {
+    const COND = String.raw`(\(단,(?:[^()]|\([^()]*\))*\))`, PAD = String.raw`(?:\\hspace\*\{[^}]*\}|\\qquad|~|\s)*`;
+    const br = new RegExp(String.raw`\\hblinebreak` + PAD + COND).exec(lx);
+    if (br) {
+      const tail = tailAt(br.index + br[0].length), end = br.index + br[0].length + tail.length;
+      if (/^\s*\\end\{hangblock\}/.test(lx.slice(end))) {
+        const hb = lx.slice(0, br.index).lastIndexOf("\\begin{hangblock}");
+        const sf = /^\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\}\s*\\sffamily/.test(lx.slice(hb));
+        return { attached: false, needRight: true, kind: "br", nth: nth(br.index), cond: br[1], tail, sf, at: br.index, src: lx.slice(br.index, end) };
+      }
+    }
+    const sp = new RegExp(String.raw`(\\end\{hangblock\})(\s*)\\begin\{hangblock\}\[0mm\]\{[0-9.]+mm\}\{0\}(\\sffamily\s*)?` + PAD + COND).exec(lx);
+    if (sp) {
+      const tail = tailAt(sp.index + sp[0].length), end = sp.index + sp[0].length + tail.length;
+      const close = lx.slice(end).match(/^\s*\\end\{hangblock\}/);
+      if (close) return { attached: false, needRight: true, kind: "sep", nth: nth(sp.index), cond: sp[4], tail, sf: !!sp[3], at: sp.index, src: lx.slice(sp.index, end + close[0].length) };
+    }
+    if (det) return { attached: false, cond: det[4], at: det.index, src: det[0], nth: nth(det.index) };
+  }
+  for (const a of lx.matchAll(/ (\(단,(?:[^()]|\([^()]*\))*\))/g)) {
+    const tail = tailAt(a.index + a[0].length), end = a.index + a[0].length + tail.length;
+    const close = lx.slice(end).match(/^\\end\{hangblock\}/);
+    if (!close) continue;
+    const hb = lx.slice(0, a.index).lastIndexOf("\\begin{hangblock}");
+    const sf = V === "A" && /^\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\}\s*\\sffamily/.test(lx.slice(hb));
+    return { attached: true, nth: nth(a.index), cond: a[1], tail, at: a.index, src: lx.slice(a.index, end + close[0].length), sf };
+  }
   return null;
 };
 window.__vbDanDecide = ({ attached, closed, condW, prevEnd, W, gap = 1.5 }) => {
@@ -1153,12 +1404,23 @@ window.__vbDanDecide = ({ attached, closed, condW, prevEnd, W, gap = 1.5 }) => {
   return prevEnd + gap + condW <= W ? "attach" : null;
 };
 window.__vbDanApply = (lx, f, act) => {
-  if (act === "detach") return lx.replace(f.src, () => `\\end{hangblock}\n\\begin{hangblock}[0mm]{0mm}{0}\\hbright{${f.cond}}\\end{hangblock}`);
+  if (f.kind === "br") {
+    if (act === "attach") return lx.replace(f.src, () => ` ${f.cond}${f.tail}`);
+    if (act === "right") return lx.replace(f.src, () => `\\hblinebreak \\hbright{${f.cond}}${f.tail}`);
+    return lx;
+  }
+  if (f.kind === "sep") {
+    if (act === "attach") return lx.replace(f.src, () => ` ${f.cond}${f.tail}\\end{hangblock}`);
+    if (act === "right") return lx.replace(f.src, () => `\\end{hangblock}\n\\begin{hangblock}[0mm]{0mm}{0}${f.sf ? "\\sffamily " : ""}\\hbright{${f.cond}}${f.tail}\\end{hangblock}`);
+    return lx;
+  }
+  if (act === "detach") return lx.replace(f.src, () => `\\end{hangblock}\n\\begin{hangblock}[0mm]{0mm}{0}${f.sf ? "\\sffamily " : ""}\\hbright{${f.cond}}${f.tail || ""}\\end{hangblock}`);
   if (act === "attach") return lx.replace(f.src, () => ` ${f.cond}\\end{hangblock}`);
   return lx;
 };
 window.__vbDanMeasure = (f, R) => {
-  const k = R.rows.findIndex((r) => r.text.includes("(단"));
+  const ks = R.rows.map((r, i) => r.text.includes("(단") ? i : -1).filter((i) => i >= 0);
+  const k = ks[f.nth || 0] ?? ks[0] ?? -1;
   if (k < 0) return null;
   const r = R.rows[k], w0 = r.w.find((w) => w.t.includes("(단")) || r.w[0];
   const cx = w0.t.includes("(단") ? w0.x0 + (w0.x1 - w0.x0) * [...w0.t.slice(0, w0.t.indexOf("(단"))].length / Math.max(1, [...w0.t].length) : w0.x0;
@@ -1169,7 +1431,81 @@ window.__vbDanMeasure = (f, R) => {
     return { attached: true, closed, condW, W: R.W };
   }
   if (k === 0) return null;
-  return { attached: false, prevEnd: R.rows[k - 1].x1, condW: r.x1 - r.x0, W: R.W };
+  return { attached: false, prevEnd: R.rows[k - 1].x1, condW: r.x1 - r.x0, W: window.__danLim(R.rows, k, R.W, 1) };
+};
+window.__vbTailFind = (lx) => {
+  const out = [], norm = (s) => s.replace(/\\cdots/g, "⋯").replace(/\\ding\{222\}/g, "➞").replace(/\\ding\{\d+\}/g, "").replace(/\\[A-Za-z]+\*?|\\,|[$~{}\s]/g, "");
+  for (const a of lx.matchAll(/(\S)\\hbright\{((?:[^{}]|\{[^{}]*\})*)\}(?=\s*(?:\\end\{hangblock\}|\\hblinebreak))/g)) {
+    const before = lx.slice(0, a.index + 1), segStart = Math.max(before.lastIndexOf("\\begin{hangblock}"), before.lastIndexOf("\\hblinebreak"));
+    const seg = before.slice(segStart).replace(/^\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\}|^\\hblinebreak/, "");
+    if (!norm(seg)) continue;
+    const key = norm(a[2]);
+    out.push({ kind: "tail", src: a[0], at: a.index, rep: a[1] + "\\hblinebreak \\hbright{" + a[2] + "}", key, nth: out.filter((x) => x.kind === "tail" && x.key.slice(0, 2) === key.slice(0, 2)).length });
+  }
+  for (const a of lx.matchAll(/\$\s*~?\s*(\((?!단,|∵|\\because|참\)|거짓\))[^()$\\]{1,40}\))\s*(?=\\end\{hangblock\}|\\hblinebreak)/g))
+    out.push({ kind: "paren", src: a[0], rep: "$\\hblinebreak \\hbright{" + a[1] + "}", key: norm(a[1]) });
+  return out;
+};
+window.__vbTailMeasure = (t, R) => {
+  if (!t.key) return false;
+  if (t.kind === "tail") {
+    const h = t.key.slice(0, 2), rs = R.rows.filter((r) => { const i = r.text.lastIndexOf(h); return i >= 0 && i >= r.text.length - t.key.length - 1; });
+    return !!rs[t.nth] && rs[t.nth].x1 > R.W + 0.1;
+  }
+  for (let k = 0; k + 1 < R.rows.length; k++)
+    for (let p = 1; p < t.key.length; p++) if (R.rows[k].text.endsWith(t.key.slice(0, p)) && R.rows[k + 1].text.startsWith(t.key.slice(p))) return true;
+  return false;
+};
+window.__vbCw31Find = (lx) => {
+  const ms = [...lx.matchAll(/\\hspace\*\{([\d.]+)mm\}(\{?)\$\\cdots\s*\$\s*([㉠-㉭])\}?(?=\\hbright\{\\ding\{222\}|\s*\\end\{hangblock\})/g)]
+    .map((a) => ({ at: a.index, len: a[0].length, D: +a[1], circ: a[3], tail: lx.startsWith("\\hbright{\\ding{222}", a.index + a[0].length) }));
+  return ms.some((x) => x.tail) ? ms : [];
+};
+window.__vbCw31Measure = (ms, R) => {
+  const hits = [];
+  for (const r of R.rows) {
+    const ai = r.w.findIndex((w) => w.t.startsWith("➞")), ws = ai >= 0 ? r.w.slice(0, ai) : r.w, w = ws[ws.length - 1];
+    if (!w || ws.length < 2) continue;
+    const cs = [...w.t], c = cs[cs.length - 1];
+    if (!/[㉠-㉭]/.test(c)) continue;
+    const prev = cs.length > 1 ? cs[cs.length - 2] : [...ws[ws.length - 2].t].pop();
+    if (!/[⋯…·]/.test(prev)) continue;
+    hits.push({ cx: cs.length > 1 ? w.x1 - 2.9 : w.x0, cw: cs.length > 1 ? 2.9 : w.x1 - w.x0, arrow: ai >= 0 ? r.w[ai].x0 : null, circ: c });
+  }
+  if (hits.length !== ms.length || hits.some((h, i) => h.circ !== ms[i].circ || (h.arrow != null) !== ms[i].tail)) return null;
+  const X = Math.min(...hits.map((h) => (h.arrow != null ? h.arrow - 2 : R.W) - h.cw));
+  return hits.map((h, i) => ({ D: +(X - (h.cx - ms[i].D)).toFixed(1), X }));
+};
+window.__vbSideLab = String.raw`(?:\{\\fontsize\{[^}]*\}\{[^}]*\}\\selectfont\s*)?\{?(?:\\textrm\{)?(\(\d+\)|\([ⅰ-ⅻ]+\)|[ㄱ-ㅎ]\.|[①-⑳]|\([a-z]\))`;
+window.__vbSideFind = (lx) => {
+  const out = [], G = window.__vb;
+  for (const h of lx.matchAll(G.HBX)) {
+    const body = h[4], first = body.match(new RegExp("^((?:\\\\sffamily\\s*|\\\\hspace\\*\\{[\\d.]+mm\\}\\s*)*)" + window.__vbSideLab));
+    if (!first || body.includes("\\hblinebreak")) continue;
+    const cuts = [...body.matchAll(new RegExp(String.raw`\\qquad\s*(?=` + window.__vbSideLab + ")", "g"))];
+    if (!cuts.length) continue;
+    const labs = [first[2], ...cuts.map((c) => body.slice(c.index).match(new RegExp(String.raw`\\qquad\s*` + window.__vbSideLab))[1])];
+    const items = [body.slice(first[1].length, cuts[0].index), ...cuts.map((c, k) => body.slice(c.index + c[0].length, k + 1 < cuts.length ? cuts[k + 1].index : body.length))];
+    out.push({ nth: out.length, src: h[0], head: h[0].slice(0, h[0].length - body.length - "\\end{hangblock}".length), lead: first[1], items, labs, L: G.num(h[1]), N: G.num(h[2]), H: +((first[1].match(/\\hspace\*\{([\d.]+)mm\}/) || [0, 0])[1]) });
+  }
+  return out;
+};
+window.__vbSideMeasure = (s, R) => {
+  const nf = (t) => t.normalize("NFKC"), at = (r, l) => r.w.findIndex((w) => nf(w.t).startsWith(nf(l)));
+  const js = R.rows.map((r, i) => { const k = at(r, s.labs[0]); return k >= 0 && Math.abs(r.w[k].x0 - s.L - s.H) < 0.6 ? i : -1; }).filter((i) => i >= 0);
+  const j = js[s.nth];
+  if (j == null) return null;
+  const r = R.rows[j], nx = R.rows[j + 1];
+  if (!nx || Math.abs(nx.x0 - s.N) > 0.6) return 0;
+  let k = 0;
+  s.labs.forEach((l, i) => { if (i && at(r, l) >= 0) k = i; });
+  if (k && nf(r.w[r.w.length - 1].t) === nf(s.labs[k])) return k;
+  if (k + 1 < s.labs.length && at(nx, s.labs[k + 1]) === 0) return k + 1;
+  return k || -1;
+};
+window.__vbSideApply = (lx, s, k) => {
+  const join = (its) => its.map((t, i) => (i ? "\\qquad " : "") + t.replace(/\s+$/, "")).join("");
+  return lx.replace(s.src, () => s.head + s.lead + join(s.items.slice(0, k)) + "\\end{hangblock}\n" + s.head + s.lead + join(s.items.slice(k)) + "\\end{hangblock}");
 };
 window.__vbColFind = (m) => {
   const G = window.__vb;
@@ -1247,13 +1583,42 @@ window.__fixBMeasure = (msgs, rowsOf, { apply = false, start } = {}) => {
       out.push({ where, index: m.index, rule: "GW17", what: `계단 D ${want.filter((d) => d != null).map((d, i) => d + "mm" + (plan.clamped[i] ? "(넘쳐 줄임 — 확인)" : "")).join(", ")} (E ${E.toFixed(1)} · 칸 ${R.W.toFixed(1)})`,
         D: want.filter((d) => d != null), clamped: plan.clamped.slice(0, -1) });
     }
-    const f = V === "B" && window.__vbDanFind({ ...m, latex: lx });
-    if (f) {
-      const x = window.__vbDanMeasure(f, R), act = x && window.__vbDanDecide(x);
-      if (act) {
+    for (let dn = 0, seen = new Set(); dn < 4; dn++) {
+      const f = window.__vbDanFind({ ...m, latex: lx }, V);
+      if (!f || seen.has(f.nth + "|" + f.src)) break;
+      seen.add(f.nth + "|" + f.src);
+      const x = window.__vbDanMeasure(f, R);
+      let act = x && window.__vbDanDecide(x);
+      if (!act && f.needRight) act = "right";
+      if (!act) break;
+      {
         lx = window.__vbDanApply(lx, f, act);
-        out.push({ where, index: m.index, rule: "GW24", before: f.src.slice(0, 70), after: act === "attach" ? "땡김(붙임)" : "뗌(다음 줄 \\hbright)",
-          what: act === "attach" ? `앞 줄 끝 ${x.prevEnd.toFixed(1)} + 조건 ${x.condW.toFixed(1)} ≤ 칸 ${x.W.toFixed(1)}` : `조건이 두 줄로 쪼개짐(조건 폭 ${x.condW.toFixed(1)})` });
+        out.push({ where, index: m.index, rule: V === "A" ? "CW26" : "GW24", before: f.src.slice(0, 70), after: act === "attach" ? "땡김(붙임)" : "뗌(다음 줄 \\hbright)",
+          what: act === "attach" ? `앞 줄 끝 ${x.prevEnd.toFixed(1)} + 조건 ${x.condW.toFixed(1)} ≤ 칸 ${x.W.toFixed(1)}` : act === "right" ? "정렬 없이 줄만 바뀐 조건 → 오른쪽 정렬(\\hbright)" : `조건이 두 줄로 쪼개짐(조건 폭 ${x.condW.toFixed(1)})` });
+      }
+    }
+    for (const t of window.__vbTailFind(lx).filter((x) => window.__vbTailMeasure(x, R)).reverse()) {
+      lx = t.at != null ? lx.slice(0, t.at) + t.rep + lx.slice(t.at + t.src.length) : lx.replace(t.src, () => t.rep);
+      out.push({ where, index: m.index, rule: V === "A" ? "CW29" : "GW29", before: t.src.slice(-50), after: t.rep.slice(-60),
+        what: t.kind === "tail" ? `꼬리 ${t.key} 가 줄 끝에 안 들어감 → 한 줄 내려 우정렬` : `괄호 설명 ${t.key} 가 두 줄로 갈림 → 다음 줄 우정렬` });
+    }
+    const c31 = V === "A" ? window.__vbCw31Find(lx) : [];
+    if (c31.length) {
+      const got = window.__vbCw31Measure(c31, R);
+      if (!got) note("CW31", "⋯ 꼬리 — 렌더 줄을 못 맞춤(사람 확인)");
+      else if (got.some((g) => g.D < 2)) note("CW31", `⋯ 꼬리 — 식이 길어 ⋯ 자리가 모자람(D ${got.map((g) => g.D).join(", ")}mm · 사람 확인)`);
+      else if (got.some((g, i) => Math.abs(g.D - c31[i].D) > 0.1)) {
+        c31.slice().reverse().forEach((c, ri) => { const g = got[c31.length - 1 - ri]; lx = lx.slice(0, c.at) + lx.slice(c.at, c.at + c.len).replace(/^\\hspace\*\{[\d.]+mm\}/, `\\hspace*{${G.mm(g.D)}}`) + lx.slice(c.at + c.len); });
+        out.push({ where, index: m.index, rule: "CW31", what: `㉠ 세로 자리 ${got[0].X.toFixed(1)}mm · D ${got.map((g) => g.D).join(", ")}mm (칸 ${R.W.toFixed(1)})` });
+      }
+    }
+    for (const s of V === "A" ? window.__vbSideFind(lx) : []) {
+      const k = window.__vbSideMeasure(s, R);
+      if (k === null) note("CW32", `좌우 나열 ${s.labs.join(" ")} — 렌더 줄을 못 맞춤(사람 확인)`);
+      else if (k < 0) note("CW32", `좌우 나열 ${s.labs[0]} 부터 안 들어감(사람 확인)`);
+      else if (k > 1) {
+        lx = window.__vbSideApply(lx, s, k);
+        out.push({ where, index: m.index, rule: "CW32", before: s.labs.join(" "), after: s.labs.slice(0, k).join(" ") + " / " + s.labs.slice(k).join(" "), what: `좌우 나열 ${s.labs[k]} 가 접힘 → ${s.labs[k]} 부터 다음 줄 ${s.labs[0]} 라벨 자리(${(s.L + s.H).toFixed(1)}mm)` });
       }
     }
     for (const c of V === "B" ? window.__vbColFind({ ...m, latex: lx }) : []) {
@@ -1371,7 +1736,8 @@ window.__fixBRun = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) => 
       const W = window.__where(work, { start }), isB = G.isB(work);
       if (!isB && window.__K.key(work) !== "A") throw new Error(`업체 모름(meta.textbook=${G.vendor(work) || "없음"})`);
       const pre = isB ? window.__fixB(work, { apply: true, start })
-        : { fix: window.__fixGW17(work, { apply: true, start }), render: work.filter((m) => window.__vbStepBlocks(m, { alignedOnly: true }).some((b) => b.rows.length > 1)).map((m) => ({ index: m.index })) };
+        : { fix: [...window.__fixGW17(work, { apply: true, start }), ...(window.__fixCW31 ? window.__fixCW31(work, { apply: true, start }) : [])],
+          render: work.filter((m) => window.__vbStepBlocks(m, { alignedOnly: true }).some((b) => b.rows.length > 1) || window.__vbDanFind(m, "A") || (m.latex && (window.__vbTailFind(m.latex).length || window.__vbCw31Find(m.latex).length || window.__vbSideFind(m.latex).length))).map((m) => ({ index: m.index })) };
       __job.fix.push(...pre.fix);
       __job.log.push(`렌더 없는 고침 ${pre.fix.length} · 렌더로 볼 곳 ${pre.render.length}`);
       const todo = new Set([...pre.fix.map((x) => x.index), ...pre.render.map((x) => x.index)]);
@@ -1606,9 +1972,23 @@ window.__fixBRun = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) => 
           });
           if (split.length > rows.length) out.push(mk(split));
         }
+        const cuts = [];
+        for (const c of body.matchAll(/\$\s*,(?:\s*(?:\\,|~))*\s*(?=\{?\$)/g)) cuts.push([c.index, c.index + c[0].length, "$,\\hblinebreak "]);
+        for (const mt of body.matchAll(/\$([^$]+)\$/g)) {
+          let d = 0;
+          const t = mt[1];
+          for (let j = 1; j < t.length - 1; j++) {
+            const ch = t[j];
+            if ("{([".includes(ch)) d++;
+            else if ("})]".includes(ch)) d--;
+            else if (ch === "," && d === 0 && t[j - 1] !== "\\")  { const st = mt.index + 1 + j; cuts.push([st, st + 1 + t.slice(j + 1).match(/^(?:\\,|~|\s)*/)[0].length, ",$\\hblinebreak $"]); }
+          }
+        }
+        cuts.sort((x, y) => y[0] - x[0]).slice(0, 6).forEach(([st, en, rep]) =>
+          out.push(lx.slice(0, off) + a + (F || "") + `{${N}}{${C}}` + body.slice(0, st) + rep + body.slice(en) + z + lx.slice(off + all.length)));
         return all;
       }
-      const rows = al[1].split(/\\\\(?![A-Za-z])/).map((r) => r.replace(/^\n/, ""));
+      const rows = window.__rowSplit(al[1]).filter((_, i) => i % 2 === 0).map((r) => r.replace(/^\n/, ""));
       const put = (newInner, newN, preFix) => {
         let nb = body.replace(al[0], "$\\begin{aligned}" + newInner + "\\end{aligned}$");
         if (preFix) nb = preFix(nb);
@@ -1654,6 +2034,25 @@ window.__fixBRun = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) => 
       }
       return all;
     });
+    const bal = (s) => { let d = 0; for (let i = 0; i < s.length; i++) { if (s[i] === "\\") { i++; continue; } d += (s[i] === "{") - (s[i] === "}"); if (d < 0) return false; } return d === 0; };
+    const matBroken = (s) => [...s.matchAll(/\\pmat\[[^\]]*\]\{/g)].some((a) => {
+      let d = 1, i = a.index + a[0].length;
+      for (; i < s.length && d; i++) { if (s[i] === "\\") { i++; continue; } d += (s[i] === "{") - (s[i] === "}"); }
+      return /\\hbright|\\hblinebreak/.test(s.slice(a.index + a[0].length, i - 1));
+    });
+    return out.filter((c) => bal(c) && !matBroken(c));
+  };
+  window.__qqCandidates = (lx) => {
+    const out = [];
+    for (const h of lx.matchAll(/(\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\})((?:\\sffamily\s*)?\\hspace\*\{0\.01mm\}\\qquad\s*)([^\n]*?)(\\end\{hangblock\})/g)) {
+      const [all, head, pre, body, end] = h;
+      if (/\\hblinebreak|\\begin\{aligned\}/.test(body)) continue;
+      const gaps = [...body.matchAll(/\$\s*(?:,|또는|이고|이면)\s*(?=\{?\$)/g)].map((g) => g.index + g[0].length);
+      gaps.reverse().forEach((at) => {
+        const nb = head + pre + body.slice(0, at).trimEnd() + end + "\n" + head + pre + body.slice(at).trimStart() + end;
+        out.push(lx.slice(0, h.index) + nb + lx.slice(h.index + all.length));
+      });
+    }
     return out;
   };
 })();
@@ -1673,7 +2072,7 @@ window.__fixARun = (msgs, { start, apply = false, pdfjs, max = 12, wait = 2500 }
         return (await window.__K.exportRendered()).messages.find((x) => x.index === 0);
       };
       const warn = (r) => Math.max(0, ...((r && r.renderWarnings) || []).map((w) => w.overflowMM || 0));
-      const lines = async (r) => r && r.pdf ? (await window.__lineFind(lib, r, "A")).filter((f) => f[0] === "넘침").length : 0;
+      const lines = async (r) => r && r.pdf ? (await window.__lineFind(lib, r, "A")).filter((f) => f[0] === "넘침" || ((f[0] === "4칸 빠짐" || f[0] === "수식 줄 시작") && r.type === "conceptUp")).length : 0;
       const targets = [];
       for (const m of work) {
         if (!m.latex || !m.pdf || m.type === "table" || (W[m.index] || "").includes("정답")) continue;
@@ -1681,13 +2080,20 @@ window.__fixARun = (msgs, { start, apply = false, pdfjs, max = 12, wait = 2500 }
       }
       __job.log.push(`넘친 메시지 ${targets.length}`);
       for (const m of targets) {
-        const cands = window.__ovCandidates(m.latex);
+        const cands = [...(m.type === "conceptUp" && window.__qqCandidates ? window.__qqCandidates(m.latex) : []), ...window.__ovCandidates(m.latex)];
         let ok = null;
         for (let i = 0; i < cands.length && i < max; i++) {
           const r = await one(cands[i], m);
-          if (r && r.pdf && warn(r) === 0 && !(await lines(r))) { ok = [i, cands[i]]; break; }
+          if (r && r.pdf && warn(r) === 0 && !(await lines(r))) { ok = [i, cands[i], r]; break; }
         }
-        if (ok) { m.latex = ok[1]; window.__clearRender(m); __job.fix.push({ where: W[m.index], index: m.index, rule: "넘침", what: `끊기·묶기 후보 ${ok[0] + 1}/${cands.length}` }); }
+        if (ok) {
+          m.latex = ok[1]; window.__clearRender(m); __job.fix.push({ where: W[m.index], index: m.index, rule: "넘침", what: `끊기·묶기 후보 ${ok[0] + 1}/${cands.length}` });
+          if (window.__fixBMeasure && window.__vbRows) {
+            const cp = JSON.parse(JSON.stringify(m)), R = await window.__vbRows(lib, ok[2]);
+            const got = window.__fixBMeasure([meta, cp], (x) => x === cp ? R : null, { apply: true, start }).filter((g) => !g.skipped);
+            if (got.length && got.every((g) => g.rule === "GW17")) { m.latex = cp.latex; window.__clearRender(m); got.forEach((g) => __job.fix.push({ ...g, where: W[m.index], rule: "CW24" })); }
+          }
+        }
         else __job.left.push(`${W[m.index]} 넘침 — 후보 ${cands.length}개로 못 풀었음(사람 확인)`);
         __job.log.push(`${W[m.index]} 끝`);
       }
