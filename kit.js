@@ -1,5 +1,5 @@
-// page-kit v2026.10.29-1724
-window.__kitBuilt = "v2026.10.29-1724";
+// page-kit v2026.10.29-1733
+window.__kitBuilt = "v2026.10.29-1733";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -440,6 +440,15 @@ window.__fixColon = (msgs, { apply = false, start } = {}) => {
     if (apply) { m.latex = r.lx; window.__clearRender && window.__clearRender(m); }
   }
   return out;
+};
+window.__fixA = (msgs, { start, apply = false } = {}) => {
+  if (window.__K.key(msgs) !== "A") return { fix: [], msgs };
+  const fix = window.__fixCW15(msgs, { start }).map((x) => ({ ...x }));
+  const work = apply ? window.__fixCW15(msgs, { apply: true, start }) : msgs;
+  for (const [rule, f] of [["CW05", window.__fixT2], ["CW17", window.__fixCW17], ["CW18", window.__fixCW18], ["CW19", window.__fixCW19], ["CW25", window.__fixDiv], ["CW12", window.__fixColon],
+    ["CW27", window.__fixCW27], ["CW28", window.__fixCW28], ["CW30", window.__fixCW30], ["CW14", window.__fixCW14], ["CW31", window.__fixCW31]])
+    for (const x of f(work, { apply, start })) fix.push({ ...x, rule: x.rule || rule });
+  return { fix, msgs: work };
 };
 window.__div = (() => {
   const grab = (s, i) => { let d = 0; for (let j = i; j < s.length; j++) { if (s[j] === "\\") { j++; continue; } if (s[j] === "{") d++; else if (s[j] === "}" && --d === 0) return j; } return -1; };
@@ -2075,8 +2084,10 @@ window.__fixARun = (msgs, { start, apply = false, pdfjs, max = 12, wait = 2500 }
       const lines = async (r) => r && r.pdf ? (await window.__lineFind(lib, r, "A")).filter((f) => f[0] === "넘침" || ((f[0] === "4칸 빠짐" || f[0] === "수식 줄 시작") && r.type === "conceptUp")).length : 0;
       const targets = [];
       for (const m of work) {
-        if (!m.latex || !m.pdf || m.type === "table" || (W[m.index] || "").includes("정답")) continue;
-        if (warn(m) > 0 || await lines(m)) targets.push(m);
+        if (!m.latex || ["table", "title", "checkpoint"].includes(m.type) || (W[m.index] || "").includes("정답")) continue;
+        const r = m.pdf ? m : await one(m.latex, m);
+        if (!r || !r.pdf) { __job.left.push(`${W[m.index]} 렌더 실패`); continue; }
+        if (warn(r) > 0 || await lines({ ...r, type: m.type })) targets.push(m);
       }
       __job.log.push(`넘친 메시지 ${targets.length}`);
       for (const m of targets) {
