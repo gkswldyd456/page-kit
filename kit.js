@@ -1,5 +1,5 @@
-// page-kit v2026.10.29-1029
-window.__kitBuilt = "v2026.10.29-1029";
+// page-kit v2026.10.29-1219
+window.__kitBuilt = "v2026.10.29-1219";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -238,6 +238,131 @@ window.__fixCW19 = (msgs, { apply = false, start } = {}) => {
   }
   return out;
 };
+window.__div = (() => {
+  const grab = (s, i) => { let d = 0; for (let j = i; j < s.length; j++) { if (s[j] === "\\") { j++; continue; } if (s[j] === "{") d++; else if (s[j] === "}" && --d === 0) return j; } return -1; };
+  const splitTop = (s, sep) => { const out = []; let d = 0, cur = ""; for (let j = 0; j < s.length; j++) { const ch = s[j]; if (d === 0 && s.startsWith(sep, j)) { out.push(cur); cur = ""; j += sep.length - 1; continue; } if (ch === "\\") { cur += ch + (s[j + 1] || ""); j++; continue; } if (ch === "{") d++; if (ch === "}") d--; cur += ch; } out.push(cur); return out; };
+  const num = (v) => String(+(+v).toFixed(2));
+  const kind = (lx) => /\\begin\{tabular\}/.test(lx) && /\\left\)\\vphantom/.test(lx) ? "B" : /\\sdreset/.test(lx) ? "S" : /\\longdiv\b/.test(lx) ? "A" : "";
+  const isDiv = (m) => !!kind(m.latex || "");
+  const TEACH = (t) => { const lx = t.latex || "", h = lx.indexOf("\\begin{hangblock}");
+    return ["explain_t", "answer_t", "fillAnswer"].includes(t.type) || (h >= 0 ? lx.slice(0, h) : lx).includes("teacherink"); };
+  const size = (msgs, i) => {
+    if ((msgs[i].latex || "").includes("teacherink")) return [7, 4.5];
+    for (let j = i - 1; j >= 0; j--) {
+      const t = msgs[j]; if (t.type === "meta" || t.type === "done" || isDiv(t) || TEACH(t)) continue;
+      if (["contents", "contents_D1", "conceptUp", "checkpoint", "title", "subtitle_c"].includes(t.type)) return null;
+      const s = /\\setmyfontsize\{([\d.]+)pt\}/.exec(t.latex || ""); if (s) return [+s[1], null];
+    }
+    return null;
+  };
+  const unbox = (s) => {
+    for (let i = s.indexOf("\\boxed{"); i >= 0; i = s.indexOf("\\boxed{", i + 1)) {
+      const st = i + "\\boxed".length, en = grab(s, st); if (en < 0) break;
+      const x = s.slice(st + 1, en).replace(/^~|~$/g, "").trim(), a = s.slice(0, i).replace(/\\,\s*$/, ""), b = s.slice(en + 1).replace(/^\\,/, "");
+      const rep = `{\\,\\divboxed{\\,${x}\\,}\\,}`; s = a + rep + b; i = a.length + rep.length - 1;
+    }
+    return s;
+  };
+  const term = (s, v) => {
+    s = s.replace(/^\s*\$|\$\s*$/g, "").replace(/\\left\)\\vphantom\{\\wfrac\{0\}\{0\}\}\\,\\right\.\\hspace\{-0\.12em\}/, "").replace(/\\Centering/g, "").trim();
+    s = unbox(s);
+    let sg = ""; const m0 = /^(?:\\,|\s)*([+-])(?:\\,|\s)*/.exec(s); if (m0) { sg = m0[1]; s = s.slice(m0[0].length); }
+    const lm = new RegExp(`(${v}(?:\\^\\{[^}]*\\}|\\^\\d)?)$`).exec(s.trim());
+    const let_ = lm ? lm[1] : "", co = (lm ? s.trim().slice(0, -lm[1].length) : s.trim()).replace(/^(?:\\,|\s)+|(?:\\,|\s)+$/g, "");
+    return [sg, co, let_];
+  };
+  const terms = (expr, v) => {
+    const out = []; let d = 0, cur = "";
+    for (let j = 0; j < expr.length; j++) {
+      const ch = expr[j]; if (ch === "\\") { const w = /^\\[A-Za-z]+|^\\./.exec(expr.slice(j))[0]; cur += w; j += w.length - 1; if (w === "\\left") d++; if (w === "\\right") d--; continue; }
+      if (ch === "{" || ch === "(") d++; if (ch === "}" || ch === ")") d--;
+      if (d === 0 && (ch === "+" || ch === "-") && cur.replace(/\\Centering|\\,|\s/g, "")) { out.push(cur); cur = ""; }
+      cur += ch;
+    }
+    if (cur.trim()) out.push(cur);
+    return out.map((t) => term(t, v));
+  };
+  const cell = ([sg, co, l], first, lead = "") => [first && sg === "+" ? "" : sg, lead + co, l ? `\\mkern-4mu ${l}` : ""];
+  const qArray = (ts, gak) => {
+    const cells = ts.flatMap((t, k) => cell(t, k === 0, k === 0 && gak ? "\\Centering " : ""));
+    return `\\begin{array}[b]{${"crl".repeat(ts.length)}} ${cells.join(" & ")}\\end{array}`;
+  };
+  const varOf = (div) => (/[a-z]/.exec(div.replace(/\\[A-Za-z]+/g, "")) || ["x"])[0];
+  const resize = (lx, [S, L]) => lx.replace(/\\setmyfontsize\{([\d.]+)pt\}\{(-?[\d.]+)pt\}(%?)/g, (a, X, Y, pct) =>
+    `\\setmyfontsize{${num(S)}pt}{${L != null ? num(L) : +Y <= 0 ? num(S * 0.6) : pct ? num(Y * S / X) : Y}pt}${pct}`);
+  const toA = (lx, gak) => {
+    const b0 = lx.indexOf("\\begin{tabular}"), e0 = lx.indexOf("\\end{tabular}");
+    const spec = /\\begin\{tabular\}\{([^}]*)\}/.exec(lx.slice(b0))[1], n = spec.replace(/[^lcr]/g, "").length - 1;
+    const pre = lx.slice(0, b0), post = lx.slice(e0 + "\\end{tabular}".length);
+    let body = lx.slice(b0 + `\\begin{tabular}{${spec}}`.length, e0).replace(/\\TabPositions\{[^}]*\}\s*/g, "");
+    const rows = []; let rule = false;
+    for (let r of splitTop(body, "\\\\")) {
+      while (/^\s*\\cline\{[^}]*\}/.test(r)) { rule = true; r = r.replace(/^\s*\\cline\{[^}]*\}/, ""); }
+      if (!r.trim()) continue;
+      const cs = splitTop(r, "&").map((c) => { c = c.trim(); const mc = /^\\multicolumn\{\d+\}\{[lcr]\}\{([\s\S]*)\}$/.exec(c); if (mc) c = mc[1]; return c.replace(/\\tab\s*/g, "").trim(); });
+      rows.push({ cs, rule }); rule = false;
+    }
+    const di = rows.findIndex((r) => r.cs.some((c) => c.includes("\\left)\\vphantom")));
+    if (di < 0 || n < 1) return null;
+    const dvs = rows[di].cs[0].replace(/^\$|\$$/g, "").trim(), v = varOf(dvs), E = 3 * n + 2;
+    const tcells = (cs) => { const out = []; let first = true; for (let k = 1; k <= n; k++) { const c = (cs[k] || "").trim(); if (!c || c === "$$") { out.push("", "", ""); continue; } out.push(...cell(term(c, v), first)); first = false; } return out; };
+    const qs = rows.slice(0, di).flatMap((r) => r.cs.slice(1).filter((c) => c.trim()).map((c) => term(c, v)));
+    const sp = (/\\setmyfontspacing\{([^}]*)\}\{([^}]*)\}/.exec(pre) || [, "0.95", "-4"]);
+    const fs = /\\setmyfontsize\{([\d.]+)pt\}/.exec(pre), S = fs ? +fs[1] : 10;
+    const lines = [`{\\renewcommand{\\arraystretch}{1.2}%`, `\\setmyfontspacing{${sp[1]}}{${sp[2]}}%`, `\\setmyfontsize{${num(S)}pt}{${num(S * 0.6)}pt}%`, `\\longdivrows`];
+    if (!gak) lines.push(`\\setlength{\\fboxsep}{1pt}%`);
+    lines.push(`\\arraycolsep=0.1em%`, `\\sbox0{$\\begin{array}{r@{\\hskip\\arraycolsep}c@{\\hskip\\arraycolsep}${"crl".repeat(n)}}`);
+    lines.push(` &  & \\multicolumn{${3 * n}}{l}{${qArray(qs, gak)}} \\\\`, `\\cline{2-${E}}`);
+    const rest = rows.slice(di);
+    rest.forEach((r, k) => {
+      if (k > 0 && r.rule) lines.push(`\\cline{2-${E}}`);
+      const head = k === 0 ? `${dvs} & \\longdiv` : " & ";
+      lines.push(`${head} & ${tcells(r.cs).join(" & ")}${k < rest.length - 1 ? " \\\\" : ""}`);
+    });
+    lines.push(`\\end{array}$}%`, `\\noindent\\usebox0\\par}`);
+    return pre.replace(/\s*$/, "\n") + lines.join("\n") + post;
+  };
+  const splitQ = (lx, gak) => {
+    const i = lx.search(/\\multicolumn\{\d+\}\{l\}\{\\Centering /); if (i < 0) return lx;
+    const k = /\\multicolumn\{(\d+)\}\{l\}\{/.exec(lx.slice(i)), st = i + k[0].length - 1, en = grab(lx, st);
+    const expr = lx.slice(st + 1, en), dv = (/\n\s*([^&\n]+?)\s*&\s*\\longdiv/.exec(lx) || [, "x"])[1];
+    return lx.slice(0, st + 1) + qArray(terms(expr, varOf(dv)), gak) + lx.slice(en);
+  };
+  const issues = (msgs, i, gak) => {
+    const m = msgs[i], lx = m.latex || "", k = kind(lx), out = [];
+    if (!k) return out;
+    if (k === "B") out.push(["나눗셈이 깨진 꼴(tabular + \\left)\\vphantom) → \\longdiv array 꼴로", lx.slice(lx.indexOf("\\begin{tabular}"), lx.indexOf("\\begin{tabular}") + 90)]);
+    if (k === "A" && /\\multicolumn\{\d+\}\{l\}\{\\Centering /.test(lx)) out.push(["나눗셈 몫이 통글 → 항마다 칸으로", (/\\multicolumn\{\d+\}\{l\}\{\\Centering [^\n]*/.exec(lx) || [""])[0].slice(0, 90)]);
+    const want = size(msgs, i);
+    if (want) {
+      const bad = [...lx.matchAll(/\\setmyfontsize\{([\d.]+)pt\}\{(-?[\d.]+)pt\}/g)].filter((x) => +x[1] !== want[0] || (want[1] != null && +x[2] !== want[1]));
+      if (bad.length) out.push([`${k === "S" ? "조립제법" : "나눗셈"} 크기 ${[...new Set(bad.map((x) => x[1] + "pt{" + x[2] + "pt}"))].join(", ")} → ${want[0]}pt${want[1] != null ? `{${want[1]}pt}` : ""}(이 자리)`, bad[0][0]]);
+    }
+    return out;
+  };
+  const fixOne = (msgs, i, gak) => {
+    let lx = msgs[i].latex || "";
+    if (kind(lx) === "B") lx = toA(lx, gak) || lx;
+    if (kind(lx) === "A" && /\\multicolumn\{\d+\}\{l\}\{\\Centering /.test(lx)) lx = splitQ(lx, gak);
+    const want = size(msgs, i); if (want) lx = resize(lx, want);
+    return lx;
+  };
+  return { kind, isDiv, size, issues, fixOne, toA, splitQ, terms };
+})();
+window.__fixDiv = (msgs, { start, apply = false } = {}) => {
+  const V = window.__K.key(msgs); if (!V) return [];
+  const gak = V === "B", rule = gak ? "GW27" : "CW25", W = window.__where(msgs, { start }), out = [];
+  msgs.forEach((m, i) => {
+    if (!window.__div.isDiv(m) || !window.__div.issues(msgs, i, gak).length) return;
+    const after = window.__div.fixOne(msgs, i, gak);
+    if (after === m.latex) return;
+    out.push({ where: W[m.index] || m.type, index: m.index, rule, before: m.latex, after });
+    if (apply) { m.latex = after; window.__clearRender && window.__clearRender(m); }
+  });
+  return out;
+};
+window.__fixGW27 = (msgs, o) => window.__fixDiv(msgs, o);
+window.__fixCW25 = (msgs, o) => window.__fixDiv(msgs, o);
 window.__check = (msgs, { start } = {}) => {
   const meta = msgs.find((m) => m.type === "meta") || {};
   const vendor = window.__K.key(msgs);
@@ -330,6 +455,7 @@ window.__check = (msgs, { start } = {}) => {
       for (const a of lx.matchAll(window.__CW17)) add(m, "CW17", "∴ 뒤 \\,\\,\\,\\, → ~ (__fixCW17)", lx.slice(Math.max(0, a.index - 20), a.index + 60));
       for (const a of lx.matchAll(window.__CW18)) add(m, "CW18", `${a[1]}\\,\\left( → ${a[1]}\\left( (__fixCW18)`, lx.slice(Math.max(0, a.index - 30), a.index + 40));
       for (const a of lx.matchAll(window.__PMAT)) if (__pmatBad(a)) add(m, "CW19", "행렬 꼴(빈 열·~·칸) (__fixCW19)", a[0].slice(0, 80));
+      if (window.__div.isDiv(m)) for (const [w, s] of window.__div.issues(msgs, msgs.indexOf(m), false)) add(m, "CW25", w + " (__fixDiv)", s);
       spacing(m, "CW13");
     }
     msgs.forEach((m, i) => {
@@ -398,7 +524,10 @@ window.__check = (msgs, { start } = {}) => {
     for (const m of msgs) {
       const t = m.type, lx = m.latex || "";
       if (m.hasNum === true || t === "subtitle" || t === "questionTitle") labs = [];
-      if (t === "table" && /\\longdivrows|\\sdreset|\\left\)\\vphantom/.test(lx)) continue;
+      if (window.__div.isDiv(m)) {
+        for (const [w, s] of window.__div.issues(msgs, msgs.indexOf(m), true)) add(m, "GW27", w + " (__fixDiv)", s);
+        continue;
+      }
       if (aBad.has(m)) { const [F, h] = aBad.get(m); add(m, "GW26", `${window.__K.w.lvA} 첫 문단 왼쪽 여백 ${F} → ${aMode}(다른 ${window.__K.w.lvA} 문제와 같게)`, snip(F, h[2], h[4])); }
       for (const [, F, N, , b] of lx.matchAll(HB)) {
         for (const a of b.matchAll(AL)) {
@@ -936,7 +1065,7 @@ window.__fixB = (msgs, { apply = false, start } = {}) => {
   const warn = new Map(msgs.map((m) => [m.index, Math.max(0, ...((m.renderWarnings || []).map((w) => w.overflowMM || 0)))]));
   const work = apply ? msgs : G.deep(msgs);
   const fix = [];
-  for (const f of [window.__fixGW20, window.__fixGW18, window.__fixGW08, window.__fixGW23, window.__fixGW19, window.__fixGW17, window.__fixGW26, window.__fixGW13, window.__fixGW25])
+  for (const f of [window.__fixGW27, window.__fixGW20, window.__fixGW18, window.__fixGW08, window.__fixGW23, window.__fixGW19, window.__fixGW17, window.__fixGW26, window.__fixGW13, window.__fixGW25])
     fix.push(...f(work, { apply: true, start }));
   return { fix, render: window.__vbRenderList(work, { start, warn }) };
 };
