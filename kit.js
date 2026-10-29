@@ -1,5 +1,5 @@
-// page-kit v2026.10.29-1811
-window.__kitBuilt = "v2026.10.29-1811";
+// page-kit v2026.10.29-1959
+window.__kitBuilt = "v2026.10.29-1959";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -58,8 +58,24 @@ window.__clearRender = (m) => {
 window.__lx = (() => {
   const HB = /\\begin\{hangblock\}(?:\[([^\]]*)\])?\{([^}]*)\}\{([^}]*)\}([\s\S]*?)\\end\{hangblock\}/g;
   const AL = /\$\\begin\{aligned\}([\s\S]*?)\\end\{aligned\}\$/g;
-  const ROW = /\\\\(?![A-Za-z])/;
-  const splitAmp = (row) => { for (let i = 0; (i = row.indexOf("&", i)) >= 0; i++) if (i === 0 || row[i - 1] !== "\\") return [row.slice(0, i), row.slice(i + 1)]; return [row, null]; };
+  const ROW = { [Symbol.split](s) {
+    const out = []; let d = 0, last = 0;
+    for (const x of s.matchAll(/\\\\(?![A-Za-z])|[{}]/g)) {
+      const esc = x.index > 0 && s[x.index - 1] === "\\";
+      if (x[0] === "{" && !esc) d++; else if (x[0] === "}" && !esc) d--;
+      else if (x[0].length === 2 && d === 0) { out.push(s.slice(last, x.index)); last = x.index + 2; }
+    }
+    return [...out, s.slice(last)];
+  } };
+  const splitAmp = (row) => {
+    let d = 0;
+    for (let i = 0; i < row.length; i++) {
+      const c = row[i], esc = i > 0 && row[i - 1] === "\\";
+      if ((c === "{" || c === "}") && !esc) d += c === "{" ? 1 : -1;
+      else if (c === "&" && d === 0 && !esc) return [row.slice(0, i), row.slice(i + 1)];
+    }
+    return [row, null];
+  };
   const classify = (prefix, inner) => {
     const rows = inner.split(ROW).map((r) => r.trim()).filter(Boolean);
     const lead = (rows.length ? splitAmp(rows[0])[0] : "").trim();
@@ -695,14 +711,17 @@ window.__check = (msgs, { start } = {}) => {
     const AMP_OP = /^\s*(?:\\,|~|\s)*(?:[+-]|\\(?:times|cdot|cdots|hspace|hbright|quad|qquad)(?![A-Za-z]))/;
     const inHbright = (s, at) => { const i = s.slice(0, at).lastIndexOf("\\hbright{"); if (i < 0) return false; const x = s.slice(i + 9, at); return x.split("{").length >= x.split("}").length; };
     const KINDS = [["\\([ⅰ-ⅹ]+\\)", "(ⅰ)"], ["[ⅰ-ⅹ]+\\)", "ⅰ)"], ["[ㄱ-ㅎ]\\.", "ㄱ."], ["\\([a-z]\\)", "(a)"], ["\\(\\d+\\)", "(1)"],
-      ["[①-⑳ⓐ-ⓩⒶ-Ⓩ㉠-㉭㉮-㉻➀-➉]", "①"], ["\\([A-Z]\\)", "(A)"], ["[A-Z][.)]", "A."], ["\\d+\\)", "1)"], ["[a-z][.)]", "a)"]];
+      ["[①-⑳Ⓐ-Ⓩ➀-➉]", "①"], ["[ⓐ-ⓩ㉠-㉭㉮-㉻]", "ⓐ"], ["\\([A-Z]\\)", "(A)"], ["[A-Z]\\.", "A."], ["[A-Z]\\)", "A)"], ["\\d+\\)", "1)"],
+      ["[a-z]\\)", "a)"], ["[a-z]\\.", "a."]];
     const LALT = KINDS.map((x) => x[0]).join("|");
     const LAB_HEAD = new RegExp("^(?:\\\\sffamily\\s*|\\s|\\{)*(?:\\\\textrm\\{)?(" + LALT + ")\\}?\\s");
     const LAB_SIDE = new RegExp("\\\\tab\\s*(?:\\\\hspace\\*\\{0\\.01mm\\}\\\\tab\\s*)*\\{?(?:\\\\textrm\\{)?(" + LALT + ")\\}?\\s");
     const labelOf = (s) => KINDS.find(([p]) => new RegExp("^(?:" + p + ")$").test(s))[1];
-    const LW = { "(ⅰ)": [5.6, 6.2, 5.9], "ⅰ)": [4.7, 5.2, 5.0], "ㄱ.": [4.8, 5.3, 5.3], "(a)": [4.5, 5.1, 4.7], "(1)": [4.6, 5.2, 4.9],
-      "①": [3.9, 4.2, 4.2], "(A)": [4.9, 5.5, 5.0], "A.": [4.0, 4.5, 4.5], "1)": [3.8, 4.2, 4.2], "a)": [3.7, 4.1, 4.1] };
-    const LSRC = { "①": [4.04, 4.39], "(1)": [4.87, 5.46], "(ⅰ)": [5.81, 6.49], "ⅰ)": [4.92, 6.49], "ㄱ.": [5.04, 5.62], "(a)": [4.97, 4.97], "(A)": [5.12, 5.12], "A.": [5.12, 5.12] };
+    const LW = { "(ⅰ)": [5.6, 6.2, 5.9], "ⅰ)": [4.7, 5.3, 5.0], "ㄱ.": [4.8, 5.4, 4.6], "(a)": [4.5, 5.0, 4.7], "(1)": [4.6, 5.1, 4.9],
+      "①": [3.9, 4.4, 3.9], "ⓐ": [3.9, 4.4, 4.0], "(A)": [4.9, 5.4, 5.0], "A.": [4.0, 4.5, 3.8], "A)": [4.0, 4.5, 4.1],
+      "1)": [3.8, 4.2, 4.0], "a)": [3.7, 4.1, 3.8], "a.": [3.7, 4.1, 3.5] };
+    const LSRC = { "①": [4.04, 4.39], "ⓐ": [4.04, 4.39], "(1)": [4.87, 5.46], "(ⅰ)": [5.81, 6.49], "ⅰ)": [4.92, 6.49], "ㄱ.": [5.04, 5.62], "(a)": [4.97, 4.97],
+      "(A)": [5.12, 5.12], "A.": [5.12, 5.12], "A)": [5.12, 5.12] };
     const LCOL = { explanation: 0, question: 1, table: 1, half_contents: 2, half_contents_D1: 2 };
     const conceptFile = !msgs.some((m) => m.type === "question" || m.type === "explanation");
     const gw08 = (b, t) => {
@@ -722,6 +741,7 @@ window.__check = (msgs, { start } = {}) => {
       const hasEq = maths(headBody).includes("=") || /\$\s*=/.test(headBody);
       if (hasText(headBody) && hasEq) return ["GW08", "가 글 좌변 — aligned 로 묶기(`\\text{(주어진 식)}&=…`)"];
       if (lab && !hasEq) return ["참고", "GW08 나 라벨 머리·첫 줄 = 없음 — 그대로(넘치면 끊어 계단)"];
+      if (hasEq && op && segs.length === 2 && /^[ \n]*\\hbright\{/.test(segs[1])) return null;
       if (hasEq && op) return ["GW08", "다 연산자 이음 — aligned 로 묶고 GW17 계단"];
       if (t === "question" && !hasEq) return null;
       return ["GW08", `그 밖 — 사람 판단(${nbKind(b) || "NB-?"})`];
@@ -743,6 +763,8 @@ window.__check = (msgs, { start } = {}) => {
       if (m.hasNum === true || t === "subtitle" || t === "questionTitle") labs = [];
       if (window.__div.isDiv(m)) {
         for (const [w, s] of window.__div.issues(msgs, msgs.indexOf(m), true)) add(m, "GW27", w + " (__fixDiv)", s);
+        if (msgs.some((x) => x.type === "explanation") && lx.includes("\\boldsymbol{"))
+          add(m, "GW32", `해설 표 안 볼드 ${lx.split("\\boldsymbol{").length - 1}곳 — 벗기기`, lx.slice(lx.indexOf("\\boldsymbol{")).slice(0, 60));
         continue;
       }
       if (aBad.has(m)) { const [F, h] = aBad.get(m); add(m, "GW26", `${window.__K.w.lvA} 첫 문단 왼쪽 여백 ${F} → ${aMode}(다른 ${window.__K.w.lvA} 문제와 같게)`, snip(F, h[2], h[4])); }
@@ -780,6 +802,7 @@ window.__check = (msgs, { start } = {}) => {
             seg = seg.replace(/^[ \n]+/, "");
             const tp = seg.match(TABS)[0];
             if (tabUnits(tp) >= 2 && OP_LEAD.test(seg.slice(tp.length))) add(m, "GW17", `계단 후보 — 탭 ${tabUnits(tp)}개로 민 이음 조각(마지막 조각은 \\hbright)`, snip(F, N, seg));
+            else if (/\$[ \t]*(?:(?:\\hspace\*\{0\.01mm\})?\\tab\s*){3,}\{?\$\s*[+-]/.test(seg)) add(m, "GW17", "계단 후보 — 문단 가운데 탭 여럿으로 민 이음 조각(줄 바꿈 + \\hbright)", snip(F, N, seg));
           }
         if (t === "explanation" && m.hasNum === true && b.includes("\\qquad")) add(m, "GW09", "정답 줄에 4칸", snip(F, N, b));
         if (t === "explanation" && m.hasNum !== true)
@@ -811,6 +834,17 @@ window.__check = (msgs, { start } = {}) => {
       for (const a of lx.matchAll(/\$\\begin\{array\}\{c\}((?:(?!\\end\{array\})[\s\S])*)\\end\{array\}\$/g))
         if (a[1].split(ROW).filter((r) => r.trim()).length === 1) add(m, "GW20", "한 줄 array 감싸기 → $식$ 으로 풀기", a[0].slice(0, 100).replace(/\n/g, " "));
       for (const at of window.__colonFix(lx).at) add(m, "GW28", "글 콜론 앞뒤 빈칸 한 칸 (__fixColon)", at);
+      if (m.type === "explanation" && m.hasNum === true) {
+        for (const h of lx.matchAll(/\\begin\{hangblock\}(?:\[([^\]]*)\])?\{([^}]*)\}\{([^}]*)\}([\s\S]*?)\\end\{hangblock\}/g)) {
+          const b = h[4];
+          if (!b.includes("\\hblinebreak") && /^(?:\\bfseries|\s)*\(1\)\s/.test(b) && /\s\(2\)\s/.test(b.replace(/\$[^$]*\$/g, "")))
+            add(m, "GW30", "새끼문제 정답이 한 줄에 — (2) 부터 줄 바꿈", b.slice(0, 100).replace(/\n/g, " "));
+        }
+        for (const x of lx.matchAll(/\\hblinebreak\s*(?:(?:\\hspace\*\{0\.01mm\})?\\tab\s*)+또는/g)) add(m, "GW31", "정답 줄 둘째 줄 '또는' 앞 탭 — 탭 빼기", x[0].slice(0, 60));
+      } else if (m.type === "explanation")
+        for (const x of lx.matchAll(/\$\s*(?:(?:\\hspace\*\{0\.01mm\})?\\tab\s*)+또는/g)) add(m, "GW31", "'또는' 앞 탭(탭으로 민 접힘) — 줄 바꿈으로", x[0].slice(0, 60));
+      if (m.type === "table" && msgs.some((x) => x.type === "explanation") && lx.includes("\\boldsymbol{"))
+        add(m, "GW32", `해설 표 안 볼드 ${lx.split("\\boldsymbol{").length - 1}곳 — 벗기기`, lx.slice(lx.indexOf("\\boldsymbol{")).slice(0, 60));
       spacing(m, "GW12");
     }
   }
@@ -931,7 +965,8 @@ window.__lineRules = (m, W, H, ws, cut = false, vendor = "") => {
       const fam = FAM.find((f) => f.test(r.w[0].t));
       if (!fam || (m.type === "question" && fam === FAM[2])) return;
       const labs = r.w.slice(1).filter((w) => fam.test(w.t)), n = labs.length + 1, F = r.x0;
-      if (n !== 2) return;
+      const nMax = Math.max(...rows.filter((x) => x.w.length && fam.test(x.w[0].t)).map((x) => 1 + x.w.slice(1).filter((w) => fam.test(w.t)).length));
+      if (n !== 2 || nMax !== 2) return;
       labs.forEach((w, j) => {
         const i = j + 1, want = Math.floor((F + (W - F) * i / n) / GRID + 0.5) * GRID;
         if (Math.abs(w.x0 - want) > 0.5 * MM) out.push(["좌우 열", k, `${w.t.match(fam)[0]} 자리 ${(w.x0 / MM).toFixed(1)} → ${(want / MM).toFixed(1)}mm(시작 ${(F / MM).toFixed(1)} ~ 칸 ${(W / MM).toFixed(1)} 의 ${i}/${n} 에 가까운 탭 자리)`, cut30(r.text)]);
@@ -964,13 +999,15 @@ window.__vb = (() => {
   const tpVals = (s) => [...s.matchAll(/([\d.]+)\s*mm/g)].map((x) => +x[1]);
   const tpIsGrid = (vals, N) => { const g = gridVals(N); return vals.length === g.length && vals.every((v, i) => Math.abs(v - g[i]) < 0.11); };
   const tpSame = (a, b) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 0.05);
-  const LW = { "(ⅰ)": [5.6, 6.2, 5.9], "ⅰ)": [4.7, 5.2, 5.0], "ㄱ.": [4.8, 5.3, 5.3], "(a)": [4.5, 5.1, 4.7], "(1)": [4.6, 5.2, 4.9],
-    "①": [3.9, 4.2, 4.2], "(A)": [4.9, 5.5, 5.0], "A.": [4.0, 4.5, 4.5], "1)": [3.8, 4.2, 4.2], "a)": [3.7, 4.1, 4.1] };
+  const LW = { "(ⅰ)": [5.6, 6.2, 5.9], "ⅰ)": [4.7, 5.3, 5.0], "ㄱ.": [4.8, 5.4, 4.6], "(a)": [4.5, 5.0, 4.7], "(1)": [4.6, 5.1, 4.9],
+    "①": [3.9, 4.4, 3.9], "ⓐ": [3.9, 4.4, 4.0], "(A)": [4.9, 5.4, 5.0], "A.": [4.0, 4.5, 3.8], "A)": [4.0, 4.5, 4.1],
+    "1)": [3.8, 4.2, 4.0], "a)": [3.7, 4.1, 3.8], "a.": [3.7, 4.1, 3.5] };
   const LAB_S = "\\([ⅰ-ⅻ]+\\)|[ⅰ-ⅻ]+\\)|[ㄱ-ㅎ]\\.|\\(\\d+\\)|\\d+\\)|\\([a-z]\\)|[a-z][.)]|\\([A-Z]\\)|[A-Z][.)]|[①-⑳ⓐ-ⓩⒶ-Ⓩ㉠-㉭㉮-㉻➀-➉]";
   const LAB = new RegExp(`^(?:\\\\sffamily\\s*|\\\\bfseries\\s*|\\s)*(?:\\\\textrm\\{)?(${LAB_S})\\}?(?=\\s|~|\\\\tab|\\\\hspace)`);
   const SIDE = new RegExp(`\\\\tab\\s*(?:\\\\hspace\\*\\{0\\.01mm\\}\\\\tab\\s*)*(?:\\\\sffamily\\s*)?(?:\\\\textrm\\{)?(?:${LAB_S})\\}?(?=\\s|~)`);
   const labKind = (l) => /^\([ⅰ-ⅻ]+\)$/.test(l) ? "(ⅰ)" : /^[ⅰ-ⅻ]+\)$/.test(l) ? "ⅰ)" : /^[ㄱ-ㅎ]\.$/.test(l) ? "ㄱ." : /^\(\d+\)$/.test(l) ? "(1)"
-    : /^\d+\)$/.test(l) ? "1)" : /^\([a-z]\)$/.test(l) ? "(a)" : /^[a-z][.)]$/.test(l) ? "a)" : /^\([A-Z]\)$/.test(l) ? "(A)" : /^[A-Z][.)]$/.test(l) ? "A." : "①";
+    : /^\d+\)$/.test(l) ? "1)" : /^\([a-z]\)$/.test(l) ? "(a)" : /^[a-z]\)$/.test(l) ? "a)" : /^[a-z]\.$/.test(l) ? "a." : /^\([A-Z]\)$/.test(l) ? "(A)"
+    : /^[A-Z]\.$/.test(l) ? "A." : /^[A-Z]\)$/.test(l) ? "A)" : /^[ⓐ-ⓩ㉠-㉭㉮-㉻]$/.test(l) ? "ⓐ" : "①";
   const COL = { explanation: 0, question: 1, choice: 1, table: 1, half_contents: 2, half_contents_D1: 2 };
   const scan = (s) => {
     const out = []; let bd = 0, ld = 0;
@@ -1265,9 +1302,35 @@ window.__fixGW17 = window.__vb.runner("GW17", (msgs) => !!window.__K.key(msgs), 
         latex = out + latex.slice(pos);
       }
     }
+    latex = window.__vbPushed(latex, ch);
   }
   return { latex, changes: ch };
 });
+window.__vbPushed = (latex, ch) => {
+  const TABS = "(?:(?:\\\\hspace\\*\\{0\\.01mm\\})?\\\\tab\\s*)";
+  const PIECE = "(\\{?\\$\\s*[+-][^$]*\\$\\}?)";
+  const END = "(?=\\s*(?:\\\\hblinebreak|\\\\end\\{hangblock\\}))";
+  const headPiece = new RegExp(`^\\s*${TABS}{2,}\\{?\\$\\s*[+-]`);
+  return latex
+    .replace(new RegExp(`(\\$)[ \\t]*${TABS}{3,}${PIECE}${END}`, "g"), (all, d, p) => {
+      ch.push([all.slice(0, 70), `$\\hblinebreak \\hbright{${p.slice(0, 50)}}`]);
+      return `${d}\\hblinebreak \\hbright{${p}}`;
+    })
+    .replace(/(\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\})([\s\S]*?)(\\end\{hangblock\})/g, (all, head, b, tail) => {
+      if (!b.includes("\\hblinebreak")) return all;
+      const segs = b.split(/\\hblinebreak/), piece = segs.map((s) => headPiece.test(s));
+      let n = 0;
+      const ns = segs.map((s, k) => {
+        if (!piece[k] || k === 0 || piece[k - 1] || piece[k + 1] || !/\$\}?\s*$/.test(segs[k - 1])) return s;
+        const x = s.match(new RegExp(`^(\\s*)${TABS}{2,}${PIECE}(\\s*)$`));
+        if (!x) return s;
+        n++;
+        ch.push([s.trim().slice(0, 70), `\\hbright{${x[2].slice(0, 50)}}`]);
+        return `${x[1] || " "}\\hbright{${x[2]}}${x[3]}`;
+      });
+      return n ? head + ns.join("\\hblinebreak") + tail : all;
+    });
+};
 window.__GW19 = /(?:\\hspace\*\{0\.01mm\}\\tab\s*|\\tab\s*)+(\((?:참|거짓)\)(?:\\hphantom\{짓\})?|\$\\cdots\s*\\cdots\s*\$\s*[㉠-㉭])\s*(?=\\hblinebreak|\\end\{hangblock\}|\\\\|$)/g;
 window.__fixGW19 = window.__vb.runner("GW19", window.__vb.isB, (m) => {
   const ch = [];
@@ -1283,13 +1346,63 @@ window.__fixGW23 = window.__vb.runner("GW23", window.__vb.isB, (m) => {
       (all, head, F, pre, body, tail) => { if (!(+F > 0)) return all; ch.push([(pre + body).slice(0, 80), body.slice(0, 80)]); return head + body + tail; });
   return { latex, changes: ch };
 });
+window.__fixGW30 = window.__vb.runner("GW30", window.__vb.isB, (m) => {
+  if (m.type !== "explanation" || m.hasNum !== true) return null;
+  const ch = [];
+  const latex = m.latex.replace(/(\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\})([\s\S]*?)(\\end\{hangblock\})/g, (all, head, b, tail) => {
+    if (b.includes("\\hblinebreak") || !/^(?:\\bfseries|\s)*\(1\)\s/.test(b) || !/\s\(2\)\s/.test(b)) return all;
+    const nb = b.split(/(\$[^$]*\$)/).map((p, i) => i % 2 ? p : p.replace(/\s+(?=\((?:[2-9]|\d{2,})\)\s)/g, "\\hblinebreak ")).join("");
+    if (nb === b) return all;
+    ch.push([b.trim().slice(0, 70), nb.trim().slice(0, 90)]);
+    return head + nb + tail;
+  });
+  return { latex, changes: ch };
+});
+window.__fixGW31 = window.__vb.runner("GW31", window.__vb.isB, (m) => {
+  if (m.type !== "explanation") return null;
+  const G = window.__vb, ch = [], TABS = /(?:\\hspace\*\{0\.01mm\})?\\tab\s*/;
+  let latex = m.latex;
+  if (m.hasNum === true) {
+    latex = latex.replace(/(\\hblinebreak\s*)((?:(?:\\hspace\*\{0\.01mm\})?\\tab\s*)+)(?=또는)/g, (all, br) => { ch.push([all.trim().slice(0, 60), "\\hblinebreak 또는"]); return br; });
+    return { latex, changes: ch };
+  }
+  latex = latex.replace(/\\begin\{hangblock\}\[([^\]]*)\]\{([^}]*)\}\{([^}]*)\}(\\hspace\*\{([0-9.]+)mm\})((?:(?!\\end\{hangblock\})[\s\S])*?\$\s*(?:(?:\\hspace\*\{0\.01mm\})?\\tab\s*)+또는(?:(?!\\end\{hangblock\})[\s\S])*?)\\end\{hangblock\}(\s*\\begin\{hangblock\}\[\1\]\{\2\}\{\3\}\\hspace\*\{\5mm\}(\$[^$]*\$)\\end\{hangblock\})?/g,
+    (all, F, N, C, hs, D, body, next, z) => {
+      let nb = body.replace(new RegExp(`\\$\\s*(?:${TABS.source})+(?=또는)`, "g"), () => "$\\hblinebreak ");
+      if (z && /또는\s*$/.test(nb)) nb = nb.replace(/\s*$/, " ") + z; else if (next) return all;
+      const nN = G.mm(G.num(F) + +D);
+      const out = `\\begin{hangblock}[${F}]{${nN}}{${C}}${hs}${nb}\\end{hangblock}`;
+      ch.push([body.slice(-70), (nb.slice(-60)) + ` (내어쓰기 ${N} → ${nN})`]);
+      return out;
+    });
+  return { latex, changes: ch };
+});
+window.__unbold = (s) => {
+  let out = "", i = 0;
+  for (;;) {
+    const k = s.indexOf("\\boldsymbol{", i);
+    if (k < 0) return out + s.slice(i);
+    let d = 1, j = k + 12;
+    for (; j < s.length && d; j++) d += s[j] === "{" ? 1 : s[j] === "}" ? -1 : 0;
+    if (d) return out + s.slice(i);
+    out += s.slice(i, k) + s.slice(k + 12, j - 1); i = j;
+  }
+};
+window.__fixGW32 = window.__vb.runner("GW32", window.__vb.isB, (m, ctx) => {
+  if (m.type !== "table" || !m.latex.includes("\\boldsymbol{")) return null;
+  if (!(ctx.hasExpl ??= ctx.msgs.some((x) => x.type === "explanation"))) return null;
+  const latex = window.__unbold(m.latex);
+  const n = (m.latex.match(/\\boldsymbol\{/g) || []).length;
+  return { latex, changes: [[(m.latex.match(/\\boldsymbol\{[^}]*\}/) || [""])[0], `볼드 ${n}곳 벗김`]] };
+});
 window.__fixB = (msgs, { apply = false, start } = {}) => {
   const G = window.__vb;
   if (!G.isB(msgs)) return { fix: [], render: [{ where: "파일", what: `${window.__K.nB} 파일 아님(meta.textbook=${G.vendor(msgs) || "없음"}) — 아무것도 안 함` }] };
   const warn = new Map(msgs.map((m) => [m.index, Math.max(0, ...((m.renderWarnings || []).map((w) => w.overflowMM || 0)))]));
   const work = apply ? msgs : G.deep(msgs);
   const fix = [];
-  for (const f of [window.__fixGW27, window.__fixGW20, window.__fixGW18, window.__fixGW08, window.__fixGW23, window.__fixGW19, window.__fixGW17, window.__fixGW26, window.__fixGW13, window.__fixGW25])
+  for (const f of [window.__fixGW27, window.__fixGW32, window.__fixGW20, window.__fixGW18, window.__fixGW08, window.__fixGW23, window.__fixGW19, window.__fixGW17,
+    window.__fixGW30, window.__fixGW31, window.__fixGW26, window.__fixGW13, window.__fixGW25])
     fix.push(...f(work, { apply: true, start }));
   return { fix, render: window.__vbRenderList(work, { start, warn }) };
 };
@@ -1303,6 +1416,7 @@ window.__vbRenderList = (msgs, { start, warn } = {}) => {
     if (window.__vbDanFind(m)) out.push({ where: w, index: m.index, rule: "GW24", what: "(단, …) 붙일지·뗄지(렌더로 재기)" });
     if (window.__vbColFind(m).length) out.push({ where: w, index: m.index, rule: "GW25", what: "좌우 나열 둘째 열 자리(렌더로 재기)" });
     if (window.__vbTailFind(m.latex).length) out.push({ where: w, index: m.index, rule: "GW29", what: "꼬리·괄호 설명이 줄 끝에 들어가나(렌더로 재기)" });
+    if (window.__vbPullFind(m.latex).length) out.push({ where: w, index: m.index, rule: "GW29", what: "혼자 한 줄인 꼬리를 앞 줄에 땡길지(렌더로 재기)" });
     const ov = warn ? warn.get(m.index) : Math.max(0, ...((m.renderWarnings || []).map((x) => x.overflowMM || 0)));
     if (ov > 0 && m.type !== "table") out.push({ where: w, index: m.index, rule: "넘침", what: `${ov}mm 넘침 — 끊기 후보 ${window.__vbCutCands(m).length}개(렌더로 고름)` });
   }
@@ -1465,6 +1579,21 @@ window.__vbTailMeasure = (t, R) => {
     for (let p = 1; p < t.key.length; p++) if (R.rows[k].text.endsWith(t.key.slice(0, p)) && R.rows[k + 1].text.startsWith(t.key.slice(p))) return true;
   return false;
 };
+window.__vbPullFind = (lx) => {
+  const out = [], norm = (s) => s.replace(/\\hphantom\{[^}]*\}/g, "").replace(/\\[A-Za-z]+\*?|[$~{}\s]/g, "");
+  for (const a of lx.matchAll(/(\$\}?)\s*\\hblinebreak\s*\\hbright\{(\((?:참|거짓)\)(?:\\hphantom\{[^}]*\})?)\}(?=\s*(?:\\end\{hangblock\}|\\hblinebreak))/g)) {
+    const key = norm(a[2]);
+    out.push({ src: a[0], at: a.index, rep: a[1] + "\\hbright{" + a[2] + "}", key, nth: out.filter((x) => x.key === key).length });
+  }
+  return out;
+};
+window.__vbPullMeasure = (t, R) => {
+  const rs = R.rows.map((r, k) => [r, k]).filter(([r]) => r.text.replace(/\s/g, "") === t.key && r.x0 > R.W / 2);
+  const hit = rs[t.nth];
+  if (!hit || hit[1] === 0) return false;
+  const [r, k] = hit, prev = R.rows[k - 1];
+  return prev.x1 + 1.5 + (r.x1 - r.x0) <= R.W - 0.1;
+};
 window.__vbCw31Find = (lx) => {
   const ms = [...lx.matchAll(/\\hspace\*\{([\d.]+)mm\}(\{?)\$\\cdots\s*\$\s*([㉠-㉭])\}?(?=\\hbright\{\\ding\{222\}|\s*\\end\{hangblock\})/g)]
     .map((a) => ({ at: a.index, len: a[0].length, D: +a[1], circ: a[3], tail: lx.startsWith("\\hbright{\\ding{222}", a.index + a[0].length) }));
@@ -1527,6 +1656,7 @@ window.__vbColFind = (m) => {
     const labs = [body.match(G.LAB)[1], ...[...body.matchAll(new RegExp(G.SIDE.source, "g"))].map((x) => x[0].match(/(\([ⅰ-ⅻ]+\)|[ⅰ-ⅻ]+\)|[ㄱ-ㅎ]\.|\(\d+\)|\d+\)|\([a-z]\)|[a-z][.)]|\([A-Z]\)|[A-Z][.)]|[①-⑳ⓐ-ⓩⒶ-Ⓩ㉠-㉭㉮-㉻➀-➉])\}?\s*$/)[1])];
     out.push({ src: t[0], body, L, labs });
   }
+  for (const c of out) c.n = Math.max(...out.filter((d) => G.near(d.L, c.L, 0.01)).map((d) => d.labs.length));
   return out;
 };
 window.__vbColDecide = ({ x, prevEnd, W, L = 0, j, n }) => {
@@ -1541,7 +1671,7 @@ window.__vbColMeasure = (c, R) => {
   for (const r of R.rows) {
     const xs = c.labs.map((l) => r.w.find((w) => w.t.normalize("NFKC").startsWith(l.normalize("NFKC"))));
     if (xs.some((x) => !x)) continue;
-    return xs.map((w, j) => j ? { x: w.x0, prevEnd: Math.max(...r.w.filter((v) => v.x1 <= w.x0 + 0.01).map((v) => v.x1)), W: R.W, L: c.L, j, n: c.labs.length } : null).slice(1);
+    return xs.map((w, j) => j ? { x: w.x0, prevEnd: Math.max(...r.w.filter((v) => v.x1 <= w.x0 + 0.01).map((v) => v.x1)), W: R.W, L: c.L, j, n: c.n || c.labs.length } : null).slice(1);
   }
   return null;
 };
@@ -1610,6 +1740,10 @@ window.__fixBMeasure = (msgs, rowsOf, { apply = false, start } = {}) => {
       lx = t.at != null ? lx.slice(0, t.at) + t.rep + lx.slice(t.at + t.src.length) : lx.replace(t.src, () => t.rep);
       out.push({ where, index: m.index, rule: V === "A" ? "CW29" : "GW29", before: t.src.slice(-50), after: t.rep.slice(-60),
         what: t.kind === "tail" ? `꼬리 ${t.key} 가 줄 끝에 안 들어감 → 한 줄 내려 우정렬` : `괄호 설명 ${t.key} 가 두 줄로 갈림 → 다음 줄 우정렬` });
+    }
+    for (const t of (V === "B" ? window.__vbPullFind(lx) : []).filter((x) => window.__vbPullMeasure(x, R)).reverse()) {
+      lx = lx.slice(0, t.at) + t.rep + lx.slice(t.at + t.src.length);
+      out.push({ where, index: m.index, rule: "GW29", before: t.src.slice(-50), after: t.rep.slice(-50), what: `혼자 한 줄인 꼬리 ${t.key} 가 앞 줄 끝에 들어감 → 땡김` });
     }
     const c31 = V === "A" ? window.__vbCw31Find(lx) : [];
     if (c31.length) {
