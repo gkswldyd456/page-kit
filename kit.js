@@ -1,5 +1,5 @@
-// page-kit v2026.10.29-1026
-window.__kitBuilt = "v2026.10.29-1026";
+// page-kit v2026.10.29-1029
+window.__kitBuilt = "v2026.10.29-1029";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -12,7 +12,7 @@ window.__K = {
   exportRendered() { return window[this.c.hook][this.c.exp](); },
   el(k) { return document.getElementById(this.c.sel[k]); },
   async pdfjs() {
-    const [p, s] = this.c.pdfjs, u = new URL(p, document.querySelector(`script[src*="${s}"]`).src).href, lib = await import(u);
+    const [p, s] = this.c.pdfjs, u = new URL(p, document.querySelector(`script[src*="${s}"]`).src).href, lib = await import(u + "?kit");
     const o = lib.GlobalWorkerOptions;
     if (o && !/^[a-z]+:/i.test(o.workerSrc || "")) o.workerSrc = u.replace(/(\.min\.mjs)$/, ".worker$1");
     return lib;
