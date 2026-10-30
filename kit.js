@@ -1,5 +1,5 @@
-// page-kit v2026.10.29-2016
-window.__kitBuilt = "v2026.10.29-2016";
+// page-kit v2026.10.30-1405
+window.__kitBuilt = "v2026.10.30-1405";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -594,6 +594,7 @@ window.__check = (msgs, { start } = {}) => {
   const meta = msgs.find((m) => m.type === "meta") || {};
   const vendor = window.__K.key(msgs);
   if (!vendor) return [{ where: "파일", index: null, type: "meta", rule: "-", what: `업체 모름(meta.textbook=${meta.textbook || "없음"}) — 검사 안 함. 사람에게 교재를 묻는다`, snip: "" }];
+  const all = msgs;
   msgs = msgs.filter((m) => m.type !== "meta" && m.type !== "done");
   const { HB, AL, ROW, splitAmp, classify, nbKind } = window.__lx;
   const W = window.__where(msgs, { start });
@@ -625,7 +626,9 @@ window.__check = (msgs, { start } = {}) => {
   const add = (m, rule, what, s) => out.push({ where: W[m.index] || "?", index: m.index, type: m.type, rule, what, snip: s });
   const spacing = (m, rid) => {
     const ok = SP[m.type]; if (!ok) return;
-    const bad = [...new Set([...(m.latex || "").matchAll(/\\setmyfontspacing\{([^}]*)\}\{([^}]*)\}/g)].map((x) => x[1] + "/" + x[2]))].filter((v) => !ok.includes(v)).sort();
+    const seen = [...new Set([...(m.latex || "").matchAll(/\\setmyfontspacing\{([^}]*)\}\{([^}]*)\}/g)].map((x) => x[1] + "/" + x[2]))];
+    const squeeze = (v) => { const [r, s] = v.split("/").map(Number); return seen.some((x) => ok.includes(x)) && r >= 0.9 && s >= -10; };
+    const bad = seen.filter((v) => !ok.includes(v) && !(rid === "GW12" && squeeze(v))).sort();
     if (bad.length) add(m, rid, `장평/자간 ${bad.join(", ")} (이 자리 기준 ${[...ok].sort().join(", ")})`, "");
   };
   const nb = (m, rid) => { for (const [, F, N, , b] of (m.latex || "").matchAll(HB)) { const k = nbKind(b); if (k) add(m, rid(k), k, `[${F ?? ""}]{${N}} ` + b.slice(0, 130)); } };
@@ -744,6 +747,7 @@ window.__check = (msgs, { start } = {}) => {
       if (hasEq && op && segs.length === 2 && /^[ \n]*\\hbright\{/.test(segs[1])) return null;
       if (hasEq && op) return ["GW08", "다 연산자 이음 — aligned 로 묶고 GW17 계단"];
       if (t === "question" && !hasEq) return null;
+      if (/^[ \n{]*(?:\\hspace\*\{[1-9][0-9.]*mm\}|\\hspace\*\{0\.01mm\}\\tab)/.test(head)) return null;
       return ["GW08", `그 밖 — 사람 판단(${nbKind(b) || "NB-?"})`];
     };
     const aFirst = []; let seenSub = false;
@@ -774,7 +778,7 @@ window.__check = (msgs, { start } = {}) => {
           const pat = classify(b.slice(Math.max(0, a.index - 30), a.index), a[1]);
           if (starts(pat, ["AL-I4", "AL-II"])) add(m, "GW10", `${window.__K.nA} 꼴 ${pat.replace(/\+$/, "")}(4칸·2칸 묶음)`, snip(F, N, b, a.index));
           if (pat === "AL-T" && a[1].trimStart().startsWith("\\therefore\\,\\,&")) add(m, "GW03", `∴ 머리 묶음에 ${window.__K.nA}-T2 꼴`, snip(F, N, b, a.index));
-          if (t === "explanation" && pat.startsWith("AL-I0") && !firstLead(a[1]).includes("\\text{")) add(m, "GW02", "라벨 머리 아닌 묶음에 머리 TAB 없음", snip(F, N, b, a.index));
+          if (t === "explanation" && pat.startsWith("AL-I0") && mm(F) < 0.05 && !firstLead(a[1]).includes("\\text{")) add(m, "GW02", "라벨 머리 아닌 묶음에 머리 TAB 없음", snip(F, N, b, a.index));
           a[1].split(ROW).map((r) => r.trim()).filter(Boolean).forEach((r, i) => {
             const [left, right] = splitAmp(r);
             if (right === null) return;
@@ -793,7 +797,7 @@ window.__check = (msgs, { start } = {}) => {
         else if (t === "explanation" && m.hasNum !== true && k === "eq" && !b.includes("\\begin{aligned}")) {
           const tabs = p.split("\\tab").length - 1;
           const fixed = [...p.matchAll(/\\hspace\*\{([0-9.]+)mm\}/g)].some((x) => +x[1] >= 1);
-          if (tabs > 1 && !OP_LEAD.test(lead(b))) add(m, "GW06", `단독 수식 줄 앞 TAB ${tabs}개(여럿 — 후보)`, snip(F, N, b));
+          if (tabs > 1 && !OP_LEAD.test(lead(b)) && !b.includes("\\vdots")) add(m, "GW06", `단독 수식 줄 앞 TAB ${tabs}개(여럿 — 후보)`, snip(F, N, b));
           else if (p.includes("\\hspace*{0.01mm}\\qquad")) add(m, "GW10", `${window.__K.nA} 꼴(단독 수식 줄 앞 4칸)`, snip(F, N, b));
           else if (!tabs && !fixed && !starts(lead(b), ["$=", "$+", "$-"])) add(m, "GW06", "단독 수식 줄 앞 TAB 없음", snip(F, N, b));
         }
@@ -819,7 +823,10 @@ window.__check = (msgs, { start } = {}) => {
           const kd = labelOf(lab[1]), col = LCOL[t], L = mm(F), Nv = mm(N);
           const sd = LAB_SIDE.exec(b.slice(lab[0].length)), side = !!sd && labelOf(sd[1]) === kd;
           const par = [...labs].reverse().find((x) => L > 0 && Math.abs(x[0] - L) < 0.05);
-          const wantL = par ? par[1] : L, want = side ? 0 : LW[kd][col];
+          const in2 = b.slice(lab[0].length).replace(/^\s+/, "").match(LAB_HEAD), kd2 = in2 && labelOf(in2[1]);
+          const dash = /^[^$\\]{0,30}?\s-\s/.test(b.slice(lab[0].length).replace(/\$[^$]*\$/g, "x"));
+          const wantL = par ? par[1] : L, want = side ? 0 : LW[kd][col] + (kd2 && LW[kd2] ? LW[kd2][col] : 0);
+          if (dash && !side) { labs.push([Nv, wantL + LW[kd][col]]); continue; }
           if (side) {
             if (Nv - L > 0.05 || Math.abs(L - wantL) > 0.05) add(m, "GW25", `좌우 나열 줄 내어쓰기 [${g(L)}]{${g(Nv)}} → [${g(wantL)}]{${g(wantL)}}(\\TabPositions = 탭 격자 − ${g(wantL)})`, snip(F, N, b));
           } else {
@@ -850,6 +857,10 @@ window.__check = (msgs, { start } = {}) => {
       }
       spacing(m, "GW12");
     }
+    if (window.__fixGW35)
+      for (const x of window.__fixGW35(all, { start })) add(msgs.find((m) => m.index === x.index), "GW35", x.sure ? "떨어진 문장 — 합치기 (__fixGW35)" : "떨어진 문장 — 합칠지 사람 확인", x.before);
+    if (window.__vb36Find)
+      for (const m of msgs) { const x = window.__vb36Find(m, W[m.index] || ""); if (x) add(m, "GW36", "탭 빠진 단독 수식줄 — 4칸으로 붙이거나 탭 (__fixBRun)", x.before); }
   }
   return out;
 };
@@ -891,6 +902,11 @@ window.__lineFind = async (lib, m, vendor = "") => {
   return window.__lineRules(m, W, H, ws, cut, vendor);
 };
 window.__DAN_A = ["question", "questionTitle", "contents", "contents_D1", "conceptUp", "analysis", "fillSolution"];
+window.__danPrevEnd = (rows, k, mm = 1) => {
+  let end = rows[k - 1].x1;
+  for (let j = k - 1; j > 0 && rows[j].y0 - rows[j - 1].y1 < 1 * mm; j--) end = Math.max(end, rows[j - 1].x1);
+  return end;
+};
 window.__danLim = (rows, k, W, mm = 1) => {
   if (k < 3) return W;
   const pw = Math.max(...rows.slice(0, k).map((x) => x.x1)), near = (x) => x.x1 >= pw - 1.5 * mm;
@@ -944,8 +960,8 @@ window.__lineRules = (m, W, H, ws, cut = false, vendor = "") => {
       const r = rows[k], w = r.w.find((v) => v.t.includes("(단")), x = charX(w, len(w.t.slice(0, w.t.indexOf("(단"))));
       if (lx.includes("\\hbright{(단")) {
         if (k > 0 && x - r.x0 <= 1) {
-          const prev = rows[k - 1], cw = (r.x1 - r.x0) / MM, need = prev.x1 / MM + DAN_GAP + cw;
-          if (need <= window.__danLim(rows, k, W, MM) / MM) out.push(["(단,)", k, `붙일 수 있음(땡기기) — 앞 줄 끝 ${(prev.x1 / MM).toFixed(1)} + 빈칸 ${g(DAN_GAP)} + 조건 ${cw.toFixed(1)} = ${need.toFixed(1)} ≤ 칸 ${(W / MM).toFixed(1)}mm`, cut30(r.text)]);
+          const pe = window.__danPrevEnd(rows, k, MM), cw = (r.x1 - r.x0) / MM, need = pe / MM + DAN_GAP + cw;
+          if (need <= window.__danLim(rows, k, W, MM) / MM) out.push(["(단,)", k, `붙일 수 있음(땡기기) — 앞 줄 끝 ${(pe / MM).toFixed(1)} + 빈칸 ${g(DAN_GAP)} + 조건 ${cw.toFixed(1)} = ${need.toFixed(1)} ≤ 칸 ${(W / MM).toFixed(1)}mm`, cut30(r.text)]);
         }
       } else {
         const tail = r.text.slice(r.text.indexOf("(단"));
@@ -1099,13 +1115,20 @@ window.__vbHang = (m, { labels, side }) => {
   for (const h of hbs) { const x = h.body.match(G.LAB); if (x && h.N > h.L) (sibW[h.L.toFixed(1)] = sibW[h.L.toFixed(1)] || []).push(h.N - h.L); }
   const colMap = new Map([["0.0", 0]]);
   const changes = [];
+  let nest = null;
   for (const h of hbs) {
     const x = h.body.match(G.LAB), isSide = !!x && G.SIDE.test(h.body);
-    h.nL = h.L > 0 && colMap.has(h.L.toFixed(1)) ? colMap.get(h.L.toFixed(1)) : h.L;
+    const x2 = x && h.body.slice(x[0].length).replace(/^\s+/, "").match(G.LAB);
+    h.nL = h.L > 0 && colMap.has(h.L.toFixed(1)) ? colMap.get(h.L.toFixed(1))
+      : nest && h.L > nest.L + 0.05 && h.L < nest.N - 0.05 ? nest.innerL : h.L;
     h.nN = h.N + (h.nL - h.L);
     if (isSide) { if (side) { h.nN = h.nL; h.why = "좌우 나열 — 내어쓰기 없이"; } }
-    else if (x && h.N >= h.L && h.N - h.L < 8) {
-      if (labels) { h.nN = h.nL + G.LW[G.labKind(x[1])][col]; h.why = `${x[1]} 라벨 폭`; }
+    else if (x && h.N >= h.L && h.N - h.L < (x2 ? 14 : 8)) {
+      if (labels) {
+        const w1 = G.LW[G.labKind(x[1])][col], w2 = x2 ? G.LW[G.labKind(x2[1])][col] : 0;
+        h.nN = h.nL + w1 + w2; h.why = x2 ? `${x[1]} ${x2[1]} 중첩 라벨 폭(${w1} + ${w2})` : `${x[1]} 라벨 폭`;
+        if (x2) nest = { L: h.L, N: h.N, innerL: h.nL + w1 };
+      }
       colMap.set(h.N.toFixed(1), h.nN);
     } else if (!x && labels && m.type === "explanation" && h.N > h.L + 0.05
         && (sibW[h.L.toFixed(1)] || []).some((w) => G.near(w, h.N - h.L))) {
@@ -1207,7 +1230,7 @@ window.__fixGW18 = window.__vb.runner("GW18", window.__vb.isB, (m) => {
     const rows = G.rowSplit(inner);
     const [a, b] = G.splitAmp(rows[0]);
     if (b === null || G.RELSTART.test(b) || a.includes("\\therefore")) return all;
-    const lt = a.replace(/\\text\{[^}]*\}|~|\\,|\s/g, "");
+    const lt = a.replace(/\\text\{[^}]*\}|~|\\,|\{\}|\s/g, "");
     if (lt) { notes.push(`첫 행 & 뒤가 관계 기호로 시작하지 않음 — 사람 판단: ${rows[0].trim().slice(0, 70)}`); return all; }
     const r = G.firstRel(b);
     if (!r) { notes.push(`첫 행에 관계 기호 없음: ${rows[0].trim().slice(0, 70)}`); return all; }
@@ -1399,16 +1422,17 @@ window.__fixGW32 = window.__vb.runner("GW32", window.__vb.isB, (m, ctx) => {
   const also = (mm) => { for (const row of (mm.tableData && mm.tableData.cells) || []) for (const c of row || []) if (c && typeof c.latex === "string" && c.latex.includes("\\boldsymbol{")) { c.latex = window.__unbold(c.latex); delete c.pdf; delete c.hash; } };
   return { latex, also, changes: [[(m.latex.match(/\\boldsymbol\{[^}]*\}/) || [""])[0], `볼드 ${n}곳 벗김${m.tableData ? "(표 칸 포함)" : ""}`]] };
 });
-window.__fixB = (msgs, { apply = false, start } = {}) => {
+window.__fixB = (msgs, { apply = false, start, corpus, edited } = {}) => {
   const G = window.__vb;
   if (!G.isB(msgs)) return { fix: [], render: [{ where: "파일", what: `${window.__K.nB} 파일 아님(meta.textbook=${G.vendor(msgs) || "없음"}) — 아무것도 안 함` }] };
   const warn = new Map(msgs.map((m) => [m.index, Math.max(0, ...((m.renderWarnings || []).map((w) => w.overflowMM || 0)))]));
   const work = apply ? msgs : G.deep(msgs);
-  const fix = [];
+  const g35 = window.__fixGW35(work, { apply: true, start, corpus, edited });
+  const fix = g35.filter((x) => x.sure), ask = g35.filter((x) => !x.sure);
   for (const f of [window.__fixGW27, window.__fixGW32, window.__fixGW20, window.__fixGW18, window.__fixGW08, window.__fixGW23, window.__fixGW19, window.__fixGW17,
     window.__fixGW30, window.__fixGW31, window.__fixGW26, window.__fixGW13, window.__fixGW25])
     fix.push(...f(work, { apply: true, start }));
-  return { fix, render: window.__vbRenderList(work, { start, warn }) };
+  return { fix, ask, render: window.__vbRenderList(work, { start, warn }) };
 };
 window.__vbRenderList = (msgs, { start, warn } = {}) => {
   const W = window.__where ? window.__where(msgs, { start }) : {};
@@ -1418,6 +1442,7 @@ window.__vbRenderList = (msgs, { start, warn } = {}) => {
     const w = W[m.index] || "?";
     for (const b of window.__vbStepBlocks(m)) if (b.rows.length > 1) out.push({ where: w, index: m.index, rule: "GW17", what: `계단 앞 줄 ${b.rows.length - 1}개 \\hspace* D(렌더로 재기)` });
     if (window.__vbDanFind(m)) out.push({ where: w, index: m.index, rule: "GW24", what: "(단, …) 붙일지·뗄지(렌더로 재기)" });
+    if (window.__vb36Find && window.__vb36Find(m, w)) out.push({ where: w, index: m.index, rule: "GW36", what: "탭 빠진 단독 수식줄 — 4칸으로 붙일지·탭(렌더로 재기)" });
     if (window.__vbColFind(m).length) out.push({ where: w, index: m.index, rule: "GW25", what: "좌우 나열 둘째 열 자리(렌더로 재기)" });
     if (window.__vbTailFind(m.latex).length) out.push({ where: w, index: m.index, rule: "GW29", what: "꼬리·괄호 설명이 줄 끝에 들어가나(렌더로 재기)" });
     if (window.__vbPullFind(m.latex).length) out.push({ where: w, index: m.index, rule: "GW29", what: "혼자 한 줄인 꼬리를 앞 줄에 땡길지(렌더로 재기)" });
@@ -1558,7 +1583,7 @@ window.__vbDanMeasure = (f, R) => {
     return { attached: true, closed, condW, W: R.W };
   }
   if (k === 0) return null;
-  return { attached: false, prevEnd: R.rows[k - 1].x1, condW: r.x1 - r.x0, W: window.__danLim(R.rows, k, R.W, 1) };
+  return { attached: false, prevEnd: window.__danPrevEnd(R.rows, k, 1), condW: r.x1 - r.x0, W: window.__danLim(R.rows, k, R.W, 1) };
 };
 window.__vbTailFind = (lx) => {
   const out = [], norm = (s) => s.replace(/\\cdots/g, "⋯").replace(/\\ding\{222\}/g, "➞").replace(/\\ding\{\d+\}/g, "").replace(/\\[A-Za-z]+\*?|\\,|[$~{}\s]/g, "");
@@ -1667,7 +1692,8 @@ window.__vbColDecide = ({ x, prevEnd, W, L = 0, j, n }) => {
   const G = window.__vb.GRID, want = L + (W - L) * j / n;
   const kt = Math.max(1, Math.round(want / G)), kc = Math.round(x / G);
   if (Math.abs(x - kc * G) > 1) return { add: 0, why: `지금 자리 ${x.toFixed(1)} 가 탭 격자가 아님` };
-  if (kt <= kc) return { add: 0, target: kt * G };
+  if (kt === kc) return { add: 0, target: kt * G };
+  if (kt < kc) return j !== 1 ? { add: 0, target: kc * G } : prevEnd > kt * G - 1 ? { add: 0, why: "앞 항목이 길어 왼쪽으로 못 옮김" } : { add: kt - kc, target: kt * G };
   if (prevEnd > kt * G - 1) return { add: 0, why: "앞 항목이 길어 못 옮김" };
   return { add: kt - kc, target: kt * G };
 };
@@ -1777,8 +1803,15 @@ window.__fixBMeasure = (msgs, rowsOf, { apply = false, start } = {}) => {
         if (!d.add) { if (d.why) note("GW25", `${c.labs[x.j]} — ${d.why}`); return; }
         const lab = c.labs[x.j];
         const re = new RegExp(`(\\\\tab\\s*(?:\\\\hspace\\*\\{0\\.01mm\\}\\\\tab\\s*)*)((?:\\\\sffamily\\s*)?(?:\\\\textrm\\{)?${lab.replace(/[()[\].]/g, "\\$&")})`);
-        body = body.replace(re, (all, tabs, l) => tabs + "\\hspace*{0.01mm}\\tab ".repeat(d.add) + l);
-        out.push({ where, index: m.index, rule: "GW25", what: `${lab} 자리 ${x.x.toFixed(1)} → ${d.target.toFixed(1)}mm (탭 ${d.add}개 더함)` });
+        let ok = true;
+        body = body.replace(re, (all, tabs, l) => {
+          if (d.add > 0) return tabs + "\\hspace*{0.01mm}\\tab ".repeat(d.add) + l;
+          let t = tabs;
+          for (let i = 0; i < -d.add; i++) { const j = t.lastIndexOf("\\hspace*{0.01mm}\\tab"); if (j < 0) { ok = false; break; } t = t.slice(0, j) + t.slice(j + "\\hspace*{0.01mm}\\tab".length).replace(/^ /, ""); }
+          return ok ? t + l : all;
+        });
+        if (!ok) { note("GW25", `${lab} — 뺄 탭이 없음`); return; }
+        out.push({ where, index: m.index, rule: "GW25", what: `${lab} 자리 ${x.x.toFixed(1)} → ${d.target.toFixed(1)}mm (탭 ${Math.abs(d.add)}개 ${d.add > 0 ? "더함" : "뺌"})` });
       });
       if (body !== c.body) lx = lx.replace(c.src, () => c.src.replace(c.body, () => body));
     }
@@ -1864,6 +1897,295 @@ window.__vbRows = async (lib, m) => {
   for (const r of rows) { r.w.sort((a, b) => a.x0 - b.x0); r.x0 = r.w[0].x0; r.x1 = Math.max(...r.w.map((w) => w.x1)); r.text = r.w.map((w) => w.t).join(""); }
   return { W: W / MM, H: H / MM, rows };
 };
+window.__vbRendered = async (mm, tries = 6) => {
+  for (let t = 0; t < tries; t++) {
+    const r = (await window.__K.exportRendered()).messages.find((x) => x.index === 0);
+    if (r && r.pdf && r.latex === mm.latex) return r;
+    await new Promise((res) => setTimeout(res, 1500));
+  }
+  return null;
+};
+window.__vb35 = (() => {
+  const plain = (s) => s.replace(/\$[^$]*\$/g, "X").replace(/\\[A-Za-z]+\*?(\{[^{}]*\})?/g, "").replace(/[{}]/g, "").trim();
+  const END = /(?:다|요|오|라)\.?\)?\s*$|[.:?!]\)?\s*$/;
+  const DISPLAY = /^\s*(?:\\sffamily\s*)?(?:\\hspace\*\{[0-9.]+mm\}|\\tab|\\qquad|\{?\$\\therefore|\\hbright|\{?\$\\begin\{(?:aligned|cases)\})/;
+  const LAB = /^(?:\\sffamily\s*|\\bfseries\s*|\s)*(?:\\textrm\{)?(?:\([ⅰ-ⅹ]+\)|\(\d+\)|[①-⑳]|[ㄱ-ㅎ]\.|\([가-하]\)|\(\{?\$[^$]*\$\}?\))/;
+  const RESULT = (s) => { const i = s.lastIndexOf("\\qquad"); return i >= 0 && /^[X\s,]*의\s*X\s*(?:개|가지)$/.test(plain(s.slice(i + 6))); };
+  const PART = /^(?:이므로|이고|이며|이면|이다|이라|을|를|이|가|은|는|의|에|에서|로|으로|와|과|도|만|라|이라고|라고)(?=[\s,.]|$)/;
+  const ADV = /^(?:반드시|항상|모두|각각|다시|또한|서로|이미|먼저|바로|함께|특히|모든|어떤|즉|또|곧|더|덜|가장|매우|아주|오직|단지)$/;
+  const tailWord = (s) => (plain(s).match(/([가-힣]+)\s*$/) || [])[1] || "";
+  const headWord = (s) => (plain(s).match(/^([가-힣]+)/) || [])[1] || "";
+  const decide = (prev, next, corpus) => {
+    const pp = plain(prev), nn = next.trim();
+    if (!pp || END.test(pp) || DISPLAY.test(prev) || DISPLAY.test(nn) || LAB.test(nn)) return null;
+    if (/\\qquad\s*\{?\$[^$]*\$\}?\s*$/.test(prev.trim()) || RESULT(prev) || RESULT(nn)) return null;
+    if (/X\s*(?:개|가지)\s*$/.test(pp)) return null;
+    if (LAB.test(prev) && /(때|경우),?\s*$/.test(pp)) return null;
+    if (!/^[가-힣$]/.test(nn)) return null;
+    if (/X\s*$/.test(pp)) return PART.test(plain(nn)) ? { join: "", why: "수식 끝 + 조사로 시작" } : null;
+    if (!/[가-힣]\s*$/.test(pp)) return null;
+    const a = tailWord(prev), b = headWord(nn) || "";
+    if (!b) return { join: " ", why: "글 다음 수식으로 이어짐" };
+    const g = corpus.split(a + b).length - 1, s = corpus.split(a + " " + b).length - 1;
+    if (g && !s) return { join: "", why: `붙여 쓴 곳 ${g}` };
+    if (s && !g) return { join: " ", why: `띄어 쓴 곳 ${s}` };
+    if (/(므로|하여|해서|하면|이면|려면|다면|으면|니까|도록|하고|이고|며|지만|는데|또는|은|는|이|가|을|를|의|에|와|과|로)$/.test(a) || ADV.test(a)) return { join: " ", why: "낱말 끝 말", weak: true };
+    if ((corpus.match(new RegExp(a + "\\s", "g")) || []).length >= 2 && !new RegExp(a + "[가-힣]").test(corpus)) return { join: " ", why: "앞 낱말이 늘 띄어 씀" };
+    return { join: null, why: `띄어쓰기 근거 없음(${a}|${b})` };
+  };
+  return { plain, decide, END, LAB };
+})();
+window.__fixGW35 = (msgs, { apply = false, start, edited = false, corpus } = {}) => {
+  if (!window.__vb.isB(msgs)) return [];
+  const K = window.__vb35, W = window.__where(msgs, { start });
+  const text = corpus || msgs.map((m) => m.latex || "").join("\n").replace(/\$[^$]*\$/g, " X ").replace(/\\[A-Za-z]+\*?/g, " ");
+  const out = [];
+  for (const m of msgs) {
+    if (!m.latex || m.type !== "explanation" || /정답/.test(W[m.index] || "")) continue;
+    let lx = m.latex, guard = 0, changed = true;
+    while (changed && guard++ < 20) {
+      changed = false;
+      const hs = [...lx.matchAll(window.__vb.HBX)];
+      for (const h of hs) {
+        const segs = h[4].split(/\\hblinebreak\s*/);
+        for (let k = 0; k + 1 < segs.length; k++) {
+          const d = K.decide(segs[k], segs[k + 1], text);
+          if (!d) continue;
+          if (/^\s*\{?\$/.test(segs[k + 1])) { d.join = null; d.why += " · 문단 안 다음 줄이 수식으로 시작(일부러 나눴을 수 있음)"; }
+          const sure = d.join !== null && !edited;
+          out.push({ where: W[m.index], index: m.index, rule: "GW35", sure, what: `문단 안 줄바꿈 ${sure ? "합침" : "후보"} — ${d.why}`, before: `${K.plain(segs[k]).slice(-12)} ⏎ ${K.plain(segs[k + 1]).slice(0, 12)}` });
+          if (sure && apply) {
+            const ns = [...segs]; ns.splice(k, 2, segs[k].replace(/\s+$/, "") + d.join + segs[k + 1].replace(/^\s+/, ""));
+            lx = lx.replace(h[0], () => h[0].replace(h[4], () => ns.join("\\hblinebreak\n"))); changed = true; break;
+          }
+        }
+        if (changed) break;
+      }
+      if (changed) continue;
+      for (let i = 0; i + 1 < hs.length; i++) {
+        const a = hs[i], b = hs[i + 1];
+        if ((a[1] || "0mm") !== (b[1] || "0mm") || a[2] !== b[2] || a[3] !== b[3]) continue;
+        const between = lx.slice(a.index + a[0].length, b.index);
+        if (between.trim()) continue;
+        const last = a[4].split(/\\hblinebreak\s*/).pop(), d = K.decide(last, b[4], text);
+        if (!d) continue;
+        const sure = d.join !== null && !edited;
+        out.push({ where: W[m.index], index: m.index, rule: "GW35", sure, what: `문단 ${sure ? "합침" : "후보"} — ${d.why}`, before: `${K.plain(last).slice(-12)} ⏎ ${K.plain(b[4]).slice(0, 12)}` });
+        if (sure && apply) {
+          const merged = a[0].replace(/\\end\{hangblock\}$/, "").replace(/\s+$/, "") + d.join + b[4].replace(/^\s+/, "") + "\\end{hangblock}";
+          lx = lx.slice(0, a.index) + merged + lx.slice(b.index + b[0].length); changed = true; break;
+        }
+      }
+    }
+    if (apply && lx !== m.latex) { m.latex = lx; window.__clearRender(m); }
+  }
+  return out;
+};
+window.__vb36Find = (m, where = "") => {
+  if (!m.latex || m.type !== "explanation" || /정답/.test(where)) return null;
+  const K = window.__vb35, G = window.__vb, lx = m.latex;
+  const mathOnly = (s) => /^\s*\{?\$/.test(s) && !/^\s*\{?\$\\(?:Rightarrow|Leftrightarrow)/.test(s)
+    && !/[가-힣A-Za-z]/.test(s.replace(/\$[^$]*\$/g, "").replace(/\\[A-Za-z]+\*?/g, "").replace(/[{}]/g, ""));
+  const mid = (p) => { const pp = K.plain(p); return pp && /[가-힣]\s*$/.test(pp) && !K.END.test(pp) && !(K.LAB.test(p) && /(때|경우),?\s*$/.test(pp)); };
+  const tabOf = (h, line) => {
+    const pre = lx.slice(0, h.index).includes("\\TabPositions") ? "" : `\\TabPositions{${G.gridTP(G.num(h[2]))}}\n`;
+    return { pre, line: "\\hspace*{0.01mm}\\tab " + line.replace(/^\s+/, "") };
+  };
+  const hs = [...lx.matchAll(G.HBX)];
+  for (let i = 0; i < hs.length; i++) {
+    const h = hs[i], segs = h[4].split(/\\hblinebreak\s*/);
+    for (let k = 1; k < segs.length; k++) {
+      if (!mathOnly(segs[k]) || !mid(segs[k - 1])) continue;
+      const rebuild = (ns, pre = "") => lx.slice(0, h.index) + pre + h[0].replace(h[4], () => ns.join("\\hblinebreak\n")) + lx.slice(h.index + h[0].length);
+      const four = [...segs]; four.splice(k - 1, 2, segs[k - 1].replace(/\s+$/, "") + "\\qquad " + segs[k].replace(/^\s+/, ""));
+      const t = tabOf(h, segs[k]), tab = [...segs]; tab[k] = t.line;
+      return { four: rebuild(four), tab: rebuild(tab, t.pre), before: `${K.plain(segs[k - 1]).slice(-12)} ⏎ ${segs[k].trim().slice(0, 40)}` };
+    }
+    const b = hs[i + 1];
+    if (!b || (h[1] || "0mm") !== (b[1] || "0mm") || h[2] !== b[2] || h[3] !== b[3] || lx.slice(h.index + h[0].length, b.index).trim()) continue;
+    const last = segs[segs.length - 1], first = b[4].split(/\\hblinebreak\s*/)[0];
+    if (!mathOnly(first) || !mid(last)) continue;
+    const four = lx.slice(0, h.index) + h[0].replace(/\\end\{hangblock\}$/, "").replace(/\s+$/, "") + "\\qquad " + b[4].replace(/^\s+/, "") + "\\end{hangblock}" + lx.slice(b.index + b[0].length);
+    const t = tabOf(b, first);
+    const tab = lx.slice(0, b.index) + t.pre + b[0].replace(b[4], () => t.line + b[4].slice(first.length)) + lx.slice(b.index + b[0].length);
+    return { four, tab, before: `${K.plain(last).slice(-12)} ⏎ ${first.trim().slice(0, 40)}` };
+  }
+  return null;
+};
+window.__vb37Cands = (m) => {
+  if (!m.latex) return [];
+  const out = [], lx = m.latex;
+  for (const h of lx.matchAll(window.__vb.HBX)) {
+    const segs = h[4].split(/(\\hblinebreak\s*)/);
+    for (let k = 0; k < segs.length; k += 2) {
+      const lead = (segs[k].match(/^\s*(?:\\hspace\*\{0\.01mm\}\\tab\s*)+/) || [""])[0];
+      if (!lead) continue;
+      const cuts = [...segs[k].matchAll(/\$,(\s*)(?=\{?\$)/g)].map((x) => x.index + 2);
+      for (const at of cuts.reverse()) {
+        const ns = [...segs]; ns[k] = segs[k].slice(0, at) + "\\hblinebreak\n" + lead.trim() + " " + segs[k].slice(at).replace(/^\s+/, "");
+        const body = ns.join("");
+        out.push({ latex: lx.slice(0, h.index) + h[0].replace(h[4], () => body) + lx.slice(h.index + h[0].length), why: `'${window.__vb35.plain(segs[k].slice(0, at)).slice(-10)}' 뒤에서 줄 나눔 + 탭` });
+      }
+    }
+  }
+  return out;
+};
+window.__vb37Fix = async (m, r, { lib, one }) => {
+  const zero = async (x) => (await window.__lineFind(lib, x, "B")).some((f) => f[0] === "수식 줄 시작");
+  if (!r || !r.pdf || !(await zero(r))) return null;
+  const n0 = (await window.__vbRows(lib, r)).rows.length;
+  for (const c of window.__vb37Cands(m).slice(0, 12)) {
+    const t = await one({ ...m, latex: c.latex });
+    if (!t || !t.pdf || Math.max(0, ...((t.renderWarnings || []).map((w) => w.overflowMM || 0))) > 0) continue;
+    if ((await window.__vbRows(lib, t)).rows.length === n0 && !(await zero(t)) && !(await window.__lineFind(lib, t, "B")).some((f) => f[0] === "넘침")) return { latex: c.latex, r: t, why: c.why };
+  }
+  return null;
+};
+window.__vbOrphanRe = /^[)?.,\]}”’]/;
+window.__vbOneCharRe = /^[가-힣][)?.,!”’]*$/;
+window.__vbOrphans = (R) => R.rows.slice(1).map((r, k) => ({ i: k + 1, r })).filter(({ r }) => window.__vbOrphanRe.test(r.text));
+window.__vbOneChars = (R) => R.rows.slice(1).map((r, k) => ({ i: k + 1, r })).filter(({ r }) => window.__vbOneCharRe.test(r.text));
+window.__vbSqueezeSteps = [[-0.01, 0], [0, -2], [-0.02, 0], [-0.01, -2], [0, -4], [-0.02, -2], [-0.03, 0], [0, -6], [-0.03, -4], [-0.04, 0], [-0.05, 0]];
+window.__vbSqueezeLimit = { ratio: 0.90, spacing: -10 };
+window.__vbOrphanPara = (lx, R, o) => {
+  const ko = (s) => (s.match(/[가-힣]/g) || []).join("");
+  const key = ko(R.rows[o.i - 1].text).slice(-3) + ko(o.r.text);
+  const hbs = [...lx.matchAll(window.__vb.HBX)];
+  const plain = (b) => ko(b.replace(/\$[^$]*\$/g, "").replace(/\\[A-Za-z]+\*?(\{[^{}]*\})?/g, ""));
+  return hbs.find((h) => plain(h[4]).includes(key)) || hbs.find((h) => plain(h[4]).endsWith(ko(o.r.text))) || null;
+};
+window.__vbSqueezeApply = (lx, h, ra, sp) => {
+  const at = lx.indexOf(h[0]); if (at < 0) return null;
+  const before = lx.slice(0, at), sets = [...before.matchAll(/\\setmyfontspacing\{([\d.]+)\}\{(-?\d+)\}/g)], cur = sets[sets.length - 1];
+  if (!cur) return null;
+  const after = lx.slice(at + h[0].length), restore = after.trim() ? `\n\\setmyfontspacing{${cur[1]}}{${cur[2]}}` : "";
+  return before + `\\setmyfontspacing{${ra}}{${sp}}\n` + h[0] + restore + after;
+};
+window.__vbSqueezeBase = (lx, h) => {
+  const sets = [...lx.slice(0, lx.indexOf(h[0])).matchAll(/\\setmyfontspacing\{([\d.]+)\}\{(-?\d+)\}/g)], c = sets[sets.length - 1];
+  return c ? [+c[1], +c[2]] : null;
+};
+window.__fixGW33Run = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) => {
+  const sleep = (t) => new Promise((r) => setTimeout(r, t));
+  window.__job = { done: false, log: [], fix: [], left: [] };
+  (async () => {
+    try {
+      if (!window.__vb.isB(msgs)) throw new Error(`${window.__K.nB} 파일만`);
+      const lib = pdfjs || await window.__K.pdfjs(), W = window.__where(msgs, { start });
+      const meta = msgs.find((m) => m.type === "meta"), done = msgs.find((m) => m.type === "done") || { type: "done" };
+      const one = async (m) => {
+        const mm = JSON.parse(JSON.stringify(m)); mm.index = 0; window.__clearRender(mm);
+        window.__loadMessages([JSON.parse(JSON.stringify(meta)), mm, JSON.parse(JSON.stringify(done))], "one.json"); await sleep(wait);
+        return window.__vbRendered(mm);
+      };
+      const worst = (r) => Math.max(0, ...((r && r.renderWarnings) || []).map((w) => w.overflowMM || 0));
+      const over = async (r) => worst(r) > 0 || (await window.__lineFind(lib, r, "B")).some((f) => f[0] === "넘침");
+      let seen = 0;
+      for (const m of msgs) {
+        if (!m.pdf || !m.latex || ["table", "title", "image"].includes(m.type) || /정답/.test(W[m.index] || "")) continue;
+        let R = await window.__vbRows(lib, m), os = window.__vbOrphans(R);
+        for (const o of window.__vbOneChars(R))
+          (__job.cand = __job.cand || []).push({ where: W[m.index], index: m.index, rule: "GW33 후보", what: `'${R.rows[o.i - 1].text.slice(-8)} / ${o.r.text}' 한 글자만 다음 줄 — 장평·자간을 조금 줄이면 당겨질 수 있음` });
+        if (!os.length) continue;
+        seen += os.length;
+        const failed = new Set();
+        for (let guard = 0; guard < 6; guard++) {
+          const o = window.__vbOrphans(R).find((x) => !failed.has(x.r.text + "|" + R.rows[x.i - 1].text.slice(-6)));
+          if (!o) break;
+          const h = window.__vbOrphanPara(m.latex, R, o), base = h && window.__vbSqueezeBase(m.latex, h);
+          const fkey = o.r.text + "|" + R.rows[o.i - 1].text.slice(-6);
+          if (!h || !base) { failed.add(fkey); __job.left.push(`${W[m.index]} '${o.r.text}' — 문단을 못 찾음(사람 확인)`); continue; }
+          let ok = false;
+          for (const [dr, ds] of window.__vbSqueezeSteps) {
+            const ra = +(base[0] + dr).toFixed(2), sp = base[1] + ds;
+            if (ra < window.__vbSqueezeLimit.ratio || sp < window.__vbSqueezeLimit.spacing) continue;
+            const lx = window.__vbSqueezeApply(m.latex, h, ra, sp); if (!lx) break;
+            const r = await one({ ...m, latex: lx });
+            if (!r || !r.pdf) continue;
+            const R2 = await window.__vbRows(lib, r);
+            if (window.__vbOrphans(R2).length < window.__vbOrphans(R).length && R2.rows.length <= R.rows.length && !(await over(r))) {
+              __job.fix.push({ where: W[m.index], index: m.index, rule: "GW33", before: `${R.rows[o.i - 1].text.slice(-8)} / ${o.r.text}`, what: `장평 ${base[0]}→${ra} · 자간 ${base[1]}→${sp} (그 문단만)` });
+              if (apply) { m.latex = lx; Object.assign(m, { ...r, index: m.index }); }
+              ok = true; R = R2; break;
+            }
+          }
+          if (!ok) { failed.add(fkey); __job.left.push(`${W[m.index]} '${R.rows[o.i - 1].text.slice(-8)} / ${o.r.text}' — 장평 ${window.__vbSqueezeLimit.ratio} · 자간 ${window.__vbSqueezeLimit.spacing} 안에서 못 당김(사람 확인)`); }
+          if (ok && !apply) break;
+        }
+        __job.log.push(`${W[m.index]} 끝`);
+      }
+      __job.log.unshift(`기호로 시작하는 줄 ${seen} · 당김 ${__job.fix.length} · 못 함 ${__job.left.length} · 한 글자 후보 ${(__job.cand || []).length}`);
+    } catch (e) { __job.log.push("ERR " + e.message); }
+    __job.done = true;
+  })();
+  return "started";
+};
+window.__vbHangMarks = (lx) => {
+  const out = [];
+  for (const h of lx.matchAll(window.__vb.HBX)) {
+    const b = h[4].replace(/\$[^$]*\$/g, "x");
+    const dash = /^(?:\\sffamily\s*)?\S{1,4}\s[^\\]{0,30}?\s-\s/.test(b), arrow = /\\Rightarrow|⇒/.test(h[4]);
+    if (dash || arrow) out.push({ h, kind: dash ? "dash" : "arrow" });
+  }
+  return out;
+};
+window.__fixGW34Run = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) => {
+  const sleep = (t) => new Promise((r) => setTimeout(r, t));
+  window.__job = { done: false, log: [], fix: [], left: [] };
+  (async () => {
+    try {
+      if (!window.__vb.isB(msgs)) throw new Error(`${window.__K.nB} 파일만`);
+      const lib = pdfjs || await window.__K.pdfjs(), W = window.__where(msgs, { start }), G = window.__vb;
+      const meta = msgs.find((m) => m.type === "meta"), done = msgs.find((m) => m.type === "done") || { type: "done" };
+      const render = async (m, latex) => {
+        const mm = { ...JSON.parse(JSON.stringify(m)), index: 0, latex }; window.__clearRender(mm);
+        window.__loadMessages([meta, mm, done].map((x) => JSON.parse(JSON.stringify(x))), "one.json"); await sleep(wait);
+        return window.__vbRendered(mm);
+      };
+      for (const m of msgs) {
+        if (!m.latex) continue;
+        let lx = m.latex, changed = [];
+        for (const { h, kind } of window.__vbHangMarks(lx)) {
+          const pre = lx.slice(0, lx.indexOf(h[0])), font = [...pre.matchAll(/\\setmyfont(?:spacing|size)\{[^}]*\}\{[^}]*\}/g)].map((x) => x[0]).slice(-2);
+          const tp = [...pre.matchAll(/\\TabPositions\{[^}]*\}/g)].pop();
+          const r = await render(m, [...font, tp ? tp[0] : "", h[0]].filter(Boolean).join("\n") + "\n");
+          if (!r || !r.pdf) { __job.left.push(`${W[m.index]} 렌더 실패`); continue; }
+          const R = await window.__vbRows(lib, r);
+          let target = null, at = -1, glued = false;
+          const isMark = (t) => kind === "dash" ? /^[-−–]/.test(t) : /^⇒/.test(t);
+          R.rows.some((row, i) => row.w.some((w, j) => {
+            if (!isMark(w.t)) return false;
+            glued = [...w.t].length > 1;
+            target = glued ? w.x0 + (w.x1 - w.x0) / [...w.t].length : (row.w[j + 1] || {}).x0; at = i; return true;
+          }));
+          if (R.rows.length < 2 || (at >= 0 && at === R.rows.length - 1)) continue;
+          if (target == null) { __job.left.push(`${W[m.index]} ${kind === "dash" ? "-" : "⇒"} 자리를 못 찾음(사람 확인)`); continue; }
+          const after = R.rows.slice(at + 1);
+          if (glued) { __job.left.push(`${W[m.index]} ${kind === "dash" ? "-" : "⇒"} 접힌 줄 ${Math.min(...after.map((x) => x.x0)).toFixed(1)}mm — 설명 첫 글자 어림 ${target.toFixed(1)}mm(표시와 글자가 한 조각이라 못 잼, 사람 확인)`); continue; }
+          const cont = Math.min(...after.map((x) => x.x0)), N = +target.toFixed(1);
+          if (Math.abs(cont - target) <= 0.2) continue;
+          const segs = h[4].split(/\\hblinebreak\s*/), k = segs.findIndex((s) => kind === "arrow" ? /^\s*(?:\\sffamily\s*)?\$\\Rightarrow/.test(s) : false);
+          let nh;
+          if (kind === "arrow" && k > 0) {
+            const sf = /^\s*\\sffamily/.test(h[4]) && !/^\s*\\sffamily/.test(segs[k]) ? "\\sffamily " : "";
+            nh = `\\begin{hangblock}[${h[1] || "0mm"}]{${h[2]}}{${h[3]}}${segs.slice(0, k).join("\\hblinebreak\n")}\\end{hangblock}\n\\begin{hangblock}[${h[2]}]{${G.mm(N)}}{${h[3]}}${sf}${segs.slice(k).join("\\hblinebreak\n")}\\end{hangblock}`;
+          } else nh = `\\begin{hangblock}[${h[1] || "0mm"}]{${G.mm(N)}}{${h[3]}}${h[4]}\\end{hangblock}`;
+          lx = lx.replace(h[0], () => nh);
+          changed.push(`${kind === "dash" ? "-" : "⇒"} 접힌 줄 ${cont.toFixed(1)} → ${N}mm(설명 첫 글자)`);
+        }
+        if (!changed.length) continue;
+        const r = await render(m, lx), R = r && r.pdf ? await window.__vbRows(lib, r) : null;
+        const over = r && Math.max(0, ...((r.renderWarnings || []).map((w) => w.overflowMM || 0))) > 0;
+        if (!R || over) { __job.left.push(`${W[m.index]} 고친 뒤 렌더 실패·넘침 — 그대로(사람 확인)`); continue; }
+        __job.fix.push({ where: W[m.index], index: m.index, rule: "GW34", what: changed.join(" · ") });
+        if (apply) { m.latex = lx; Object.assign(m, { ...r, index: m.index }); }
+      }
+      __job.log.unshift(`고침 ${__job.fix.length} · 못 함 ${__job.left.length}`);
+    } catch (e) { __job.log.push("ERR " + e.message); }
+    __job.done = true;
+  })();
+  return "started";
+};
 window.__fixBRun = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) => {
   const sleep = (t) => new Promise((r) => setTimeout(r, t));
   window.__job = { done: false, log: [], fix: [], left: [] };
@@ -1876,7 +2198,7 @@ window.__fixBRun = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) => 
       const one = async (m) => {
         const mm = JSON.parse(JSON.stringify(m)); mm.index = 0; window.__clearRender(mm);
         window.__loadMessages([JSON.parse(JSON.stringify(meta)), mm, JSON.parse(JSON.stringify(done))], "one.json"); await sleep(wait);
-        return (await window.__K.exportRendered()).messages.find((x) => x.index === 0);
+        return window.__vbRendered(mm);
       };
       const worst = (r) => Math.max(0, ...((r && r.renderWarnings) || []).map((w) => w.overflowMM || 0));
       const lineOver = async (r) => r && r.pdf ? (await window.__lineFind(lib, r, "B")).some((f) => f[0] === "넘침") : false;
@@ -1886,12 +2208,25 @@ window.__fixBRun = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) => 
         : { fix: [...window.__fixGW17(work, { apply: true, start }), ...(window.__fixCW31 ? window.__fixCW31(work, { apply: true, start }) : [])],
           render: work.filter((m) => window.__vbStepBlocks(m, { alignedOnly: true }).some((b) => b.rows.length > 1) || window.__vbDanFind(m, "A") || (m.latex && (window.__vbTailFind(m.latex).length || window.__vbCw31Find(m.latex).length || window.__vbSideFind(m.latex).length))).map((m) => ({ index: m.index })) };
       __job.fix.push(...pre.fix);
-      __job.log.push(`렌더 없는 고침 ${pre.fix.length} · 렌더로 볼 곳 ${pre.render.length}`);
-      const todo = new Set([...pre.fix.map((x) => x.index), ...pre.render.map((x) => x.index)]);
+      __job.left.push(...(pre.ask || []).map((x) => `${x.where} ${x.before} — ${x.what}(사람 확인)`));
+      __job.log.push(`렌더 없는 고침 ${pre.fix.length} · 렌더로 볼 곳 ${pre.render.length}${pre.ask && pre.ask.length ? ` · 문장 합칠지 확인 ${pre.ask.length}` : ""}`);
+      const todo = new Set([...pre.fix.map((x) => x.index), ...pre.render.map((x) => x.index),
+        ...(isB ? work.filter((m) => window.__vb37Cands(m).length).map((m) => m.index) : [])]);
       for (const m of work) {
         if (!todo.has(m.index) || !m.latex) continue;
         let r = m.pdf ? m : await one(m);
         if (!r || !r.pdf) { __job.left.push(`${W[m.index]} 렌더 실패`); continue; }
+        for (let g = 0, f; isB && g < 5 && (f = window.__vb36Find(m, W[m.index])); g++) {
+          const n0 = (await window.__vbRows(lib, r)).rows.length, t = await one({ ...m, latex: f.four });
+          const fit = t && t.pdf && worst(t) === 0 && !(await lineOver(t)) && (await window.__vbRows(lib, t)).rows.length === n0 - 1;
+          m.latex = fit ? f.four : f.tab; window.__clearRender(m);
+          __job.fix.push({ where: W[m.index], index: m.index, rule: "GW36", what: `탭 빠진 단독 수식줄 ${f.before} → ${fit ? "앞 줄 끝에 4칸으로 붙임" : "4칸으로 안 들어가 줄 나눔 + 탭"}` });
+          r = fit ? t : await one(m);
+        }
+        for (let g = 0, f; isB && g < 3 && window.__vb37Cands(m).length && (f = await window.__vb37Fix(m, r, { lib, one })); g++) {
+          m.latex = f.latex; window.__clearRender(m); r = f.r;
+          __job.fix.push({ where: W[m.index], index: m.index, rule: "GW37", what: `탭으로 민 수식 나열 접힘 → ${f.why}` });
+        }
         for (let round = 0; round < 2; round++) {
           const R = await window.__vbRows(lib, r);
           const got = window.__fixBMeasure([meta, m], (x) => x === m ? R : null, { apply: true, start });
