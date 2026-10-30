@@ -1,5 +1,5 @@
-// page-kit v2026.10.30-1405
-window.__kitBuilt = "v2026.10.30-1405";
+// page-kit v2026.10.30-1716
+window.__kitBuilt = "v2026.10.30-1716";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -18,7 +18,7 @@ window.__K = {
     return lib;
   },
 };
-const KIT_CFGV = 1;
+var KIT_CFGV = 1;
 window.__kitReady = () => {
   if (!window.__kitCfg) return "도구를 못 씀 — 설정(__kitCfg)이 없음. 북마크 '도구'를 다시 누르기";
   const c = window.__kitCfg, n = Object.keys(window).filter((k) => /^__/.test(k) && typeof window[k] === "function").length;
@@ -2588,3 +2588,636 @@ window.__fixARun = (msgs, { start, apply = false, pdfjs, max = 12, wait = 2500 }
   })();
   return "started";
 };
+{
+window.__eyeSyntax = (lx) => {
+  const bad = [], s = String(lx || "");
+  let d = 0, dollar = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "\\") { i++; continue; }
+    if (c === "{") d++;
+    else if (c === "}" && --d < 0) { bad.push(`닫는 중괄호가 남음(${i}째 글자 근처)`); d = 0; }
+    else if (c === "$") dollar++;
+  }
+  if (d > 0) bad.push(`여는 중괄호 ${d}개가 안 닫힘`);
+  if (dollar % 2) bad.push("$ 짝이 안 맞음");
+  const env = [];
+  for (const m of s.matchAll(/\\(begin|end)\{([^}]*)\}/g)) {
+    if (m[1] === "begin") env.push(m[2]);
+    else if (env.pop() !== m[2]) { bad.push(`\\end{${m[2]}} 짝이 안 맞음`); break; }
+  }
+  if (env.length) bad.push(`\\begin{${env.join(",")}} 이 안 닫힘`);
+  const L = (s.match(/\\left(?![a-zA-Z])/g) || []).length, R = (s.match(/\\right(?![a-zA-Z])/g) || []).length;
+  if (L !== R) bad.push(`\\left ${L}개 · \\right ${R}개`);
+  for (const m of s.matchAll(/\\(w?frac|dfrac|tfrac)(?![a-zA-Z])\s*(\\[,;:!]|~)/g)) bad.push(`\\${m[1]} 바로 뒤에 ${m[2]} — 분자 자리가 비거나 밀림`);
+  return bad;
+};
+window.__eyeWmm = (msgs) => ((msgs || []).find((m) => m.type === "meta")?.pageLayout?.columnWidthMM) || 85;
+window.__eyeRender = async (lx, { wmm = 85, scale = 3 } = {}) => {
+  const out = { ok: false, wmm };
+  try {
+    if (typeof globalThis.renderLatexToPdf !== "function") throw new Error("렌더 엔진이 아직 없음 — 페이지가 다 뜬 뒤 다시");
+    const r = await globalThis.renderLatexToPdf(lx, wmm, null);
+    out.hmm = Math.round(r.pageHmm * 100) / 100;
+    const of = r.overfull; out.overfull = of && of.count > 0 ? Math.round((+of.maxMm || 0) * 100) / 100 : 0;
+    out.png = await window.__eyePdfPng(r.pdf, scale);
+    out.ok = true;
+  } catch (e) { out.error = (e && e.message) || String(e); }
+  return out;
+};
+window.__eyePdfPng = async (b64, scale = 3) => {
+  const lib = window.__eyeLib || (window.__eyeLib = await window.__K.pdfjs());
+  const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const doc = await lib.getDocument({ data: bin }).promise, pg = await doc.getPage(1), vp = pg.getViewport({ scale });
+  const cv = document.createElement("canvas"); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+  const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height);
+  await pg.render({ canvasContext: g, viewport: vp }).promise;
+  doc.destroy();
+  return cv.toDataURL("image/png");
+};
+window.__eyeTry = async (msgs, index, from, to) => {
+  const m = msgs.find((x) => x.index === index);
+  if (!m || !m.latex) return { block: "메시지 없음" };
+  if (!m.latex.includes(from)) return { block: "찾을 글이 없음" };
+  const wmm = window.__eyeWmm(msgs), lx = m.latex.replace(from, to);
+  const before = await window.__eyeRender(m.latex, { wmm }), after = await window.__eyeRender(lx, { wmm });
+  const s0 = window.__eyeSyntax(m.latex), s1 = window.__eyeSyntax(lx);
+  before.syntax = s0; after.syntax = s1; after.latex = lx;
+  const known = window.__eyeCmds && window.__eyeCmds.msgs === msgs ? window.__eyeCmds.set
+    : (window.__eyeCmds = { msgs, set: new Set(msgs.flatMap((x) => (x.latex || "").match(/\\[a-zA-Z]+/g) || [])) }).set;
+  const fresh = [...new Set(lx.match(/\\[a-zA-Z]+/g) || [])].filter((c) => !known.has(c));
+  after.fresh = fresh;
+  let block = "";
+  if (s1.length > s0.length || s1.some((x) => !s0.includes(x))) block = "문법 짝: " + s1.filter((x) => !s0.includes(x)).join(" · ");
+  else if (fresh.length) block = "이 파일에 없던 명령: " + fresh.join(" ") + " — 렌더가 말없이 무시할 수 있음";
+  else if (!after.ok) block = "렌더 오류: " + after.error;
+  else if (after.overfull > (before.overfull || 0)) block = `넘침 ${after.overfull}mm`;
+  return { before, after, block };
+};
+const EYE_NOGLYPH = ["∖", "∕"];
+window.__eyeRules = (msgs) => {
+  const out = [];
+  const arg = (s, i) => {
+    let d = 0;
+    for (let k = i; k < s.length; k++) { if (s[k] === "\\") { k++; continue; } if (s[k] === "{") d++; else if (s[k] === "}" && --d === 0) return k; }
+    return -1;
+  };
+  for (const m of msgs) {
+    const s = m.latex || "";
+    for (const f of s.matchAll(/\\frac\\,\s*\{/g)) {
+      const a0 = f.index + f[0].length - 1, a1 = arg(s, a0);
+      if (a1 < 0) continue;
+      const rest = s.slice(a1 + 1).match(/^\s*\\,\s*\{/);
+      if (!rest) continue;
+      const b0 = a1 + 1 + rest[0].length - 1, b1 = arg(s, b0);
+      if (b1 < 0) continue;
+      const from = s.slice(f.index, b1 + 1), to = `\\wfrac${s.slice(a0, a1 + 1)}${s.slice(b0, b1 + 1)}`;
+      out.push({ index: m.index, kind: "깨짐", conf: "높음", src: "규칙", what: "분수가 깨짐 — 분수 명령 바로 뒤 작은 칸 때문에 분자 자리가 비고 분자가 밑으로 감", fix: "작은 칸을 빼고 \\wfrac{분자}{분모} 로", from, to });
+    }
+    const txt = s.replace(/\$[^$]*\$/g, "");
+    for (const c of EYE_NOGLYPH) if (txt.includes(c))
+      out.push({ index: m.index, kind: "깨짐", conf: "높음", src: "규칙", what: `글꼴에 없는 글자 ${c} — 빈 네모로 나옴`, fix: "수식 기호로 바꾸기(어떤 기호로 할지 사람이 정함)", from: c, to: "" });
+  }
+  return out;
+};
+window.__pageShot = async (pageEl, { scale = 1.5, pad = 24, as = "blob" } = {}) => {
+  const P = pageEl.getBoundingClientRect();
+  const W = Math.ceil((P.width + pad * 2) * scale), H = Math.ceil((P.height + pad * 2) * scale);
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const g = cv.getContext("2d");
+  g.fillStyle = "#e9ecef"; g.fillRect(0, 0, W, H);
+  g.scale(scale, scale); g.translate(pad - P.left, pad - P.top);
+  const vis = (cs) => cs.display !== "none" && cs.visibility !== "hidden" && +cs.opacity !== 0;
+  const els = [pageEl, ...pageEl.querySelectorAll("*")];
+  for (const pass of [0, 1]) for (const el of els) {
+    if (el.closest && el.closest("[data-eye-skip]")) continue;
+    const cs = getComputedStyle(el); if (!vis(cs)) continue;
+    const r = el.getBoundingClientRect(); if (!r.width || !r.height) continue;
+    if (pass === 1) { await drawFg(el, cs, r); continue; }
+    if (el === pageEl) { g.fillStyle = "#fff"; g.fillRect(r.left, r.top, r.width, r.height); }
+    const bg = cs.backgroundColor;
+    if (el !== pageEl && bg && bg !== "transparent" && !/rgba\(.*,\s*0\)$/.test(bg)) { g.fillStyle = bg; g.fillRect(r.left, r.top, r.width, r.height); }
+    const bi = cs.backgroundImage;
+    if (bi && bi !== "none") {
+      const u = (bi.match(/url\("?([^")]+)"?\)/) || [])[1];
+      if (u) {
+        const im = await new Promise((res) => { const x = new Image(); x.crossOrigin = "anonymous"; x.onload = () => res(x); x.onerror = () => res(null); x.src = u; });
+        if (im) { try {
+          const bs = cs.backgroundSize;
+          if (/cover|100%|contain/.test(bs)) g.drawImage(im, r.left, r.top, r.width, r.height);
+          else { const [bw, bh] = bs.split(" ").map(parseFloat); g.drawImage(im, r.left, r.top, bw || im.naturalWidth, bh || (bw ? im.naturalHeight * bw / im.naturalWidth : im.naturalHeight)); }
+        } catch (e) {} }
+      }
+    }
+  }
+  async function drawFg(el, cs, r) {
+    for (const [side, x0, y0, x1, y1] of [["Top", r.left, r.top, r.right, r.top], ["Bottom", r.left, r.bottom, r.right, r.bottom], ["Left", r.left, r.top, r.left, r.bottom], ["Right", r.right, r.top, r.right, r.bottom]]) {
+      const w = parseFloat(cs["border" + side + "Width"]), st = cs["border" + side + "Style"];
+      if (!w || st === "none" || st === "hidden") continue;
+      g.strokeStyle = cs["border" + side + "Color"]; g.lineWidth = w; g.setLineDash(st === "dashed" ? [4, 3] : st === "dotted" ? [1, 2] : []);
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+    }
+    g.setLineDash([]);
+    if (el.tagName === "CANVAS" && el.width && el.height) { try { g.drawImage(el, r.left, r.top, r.width, r.height); } catch (e) {  } }
+    if (el.tagName === "IMG" && el.complete) { try { g.drawImage(el, r.left, r.top, r.width, r.height); } catch (e) {} }
+    for (const n of el.childNodes) {
+      if (n.nodeType !== 3 || !n.textContent.trim()) continue;
+      const rg = document.createRange();
+      g.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`; g.fillStyle = cs.color; g.textBaseline = "alphabetic";
+      const put = (s, q) => {
+        const mt = g.measureText(s), A = mt.fontBoundingBoxAscent || mt.actualBoundingBoxAscent, Dd = mt.fontBoundingBoxDescent || mt.actualBoundingBoxDescent;
+        const base = q.top + q.height * (A / Math.max(1, A + Dd)), sx = mt.width ? Math.min(1.25, Math.max(0.75, q.width / mt.width)) : 1;
+        g.save(); g.translate(q.left, base); g.scale(sx, Math.min(1.25, Math.max(0.75, q.height / Math.max(1, A + Dd)))); g.fillText(s, 0, 0); g.restore();
+      };
+      const t = n.textContent;
+      const re = /\S+/g; let mm;
+      while ((mm = re.exec(t))) {
+        rg.setStart(n, mm.index); rg.setEnd(n, mm.index + mm[0].length);
+        const rs = [...rg.getClientRects()];
+        if (rs.length === 1) { if (rs[0].width) put(mm[0], rs[0]); continue; }
+        for (let i = 0; i < mm[0].length; i++) { rg.setStart(n, mm.index + i); rg.setEnd(n, mm.index + i + 1); const q = rg.getBoundingClientRect(); if (q.width) put(mm[0][i], q); }
+      }
+    }
+  }
+  g.strokeStyle = "#868e96"; g.lineWidth = 1; g.strokeRect(P.left, P.top, P.width, P.height);
+  return as === "canvas" ? cv : await new Promise((res) => cv.toBlob(res, "image/png"));
+};
+const eyeSel = () => window.__K.c.sel;
+const eyePages = () => { const s = eyeSel(), box = document.getElementById(s.preview);
+  return box ? [...box.querySelectorAll("." + s.page)].filter((p) => !p.classList.contains(s.hidden) && p.getBoundingClientRect().width) : []; };
+const eyeBoxEl = (index) => { const s = eyeSel(), box = document.getElementById(s.preview);
+  return box && box.querySelector(`.${s.box}[${s.msgAttr}="${index}"]`); };
+const sleep = (t) => new Promise((r) => setTimeout(r, t));
+const SHOT = { scale: 1.5, pad: 24 };
+async function eyeShotPage(pg) {
+  pg.scrollIntoView({ block: "center" }); await sleep(700);
+  const cv = await window.__pageShot(pg, { ...SHOT, as: "canvas" }), P = pg.getBoundingClientRect(), s = eyeSel();
+  const boxes = [...pg.querySelectorAll(`.${s.box}[${s.msgAttr}]`)].map((b) => {
+    const r = b.getBoundingClientRect(), k = SHOT.scale;
+    return { index: +b.getAttribute(s.msgAttr), x: (r.left - P.left + SHOT.pad) * k, y: (r.top - P.top + SHOT.pad) * k, w: r.width * k, h: r.height * k };
+  });
+  return { png: cv.toDataURL("image/png"), w: cv.width, h: cv.height, boxes };
+}
+const eyeKey = (msgs) => {
+  const m = msgs.find((x) => x.type === "meta") || {}, s = msgs.map((x) => `${x.type}:${x.label || ""}:${x.hasNum || ""}`).join(",");
+  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return `eye:${m.part || ""}:${msgs.length}:${(h >>> 0).toString(36)}`;
+};
+const eyeSave = () => { const S = window.__eyeS; if (!S) return;
+  try { localStorage.setItem(S.key, JSON.stringify(S.items.map(({ beforePng, afterPng, _baP, ...x }) => x))); localStorage.setItem(S.key + ":log", JSON.stringify(S.log || [])); } catch (e) {  } };
+const eyeLoad = (key) => { try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch (e) { return []; } };
+const EYE_DROP = ["pdf", "svg", "hash", "segments", "blockPositions", "paragraphBreaks", "bacenters", "renderStatus", "renderWarnings", "height", "inlineImages", "imageData"];
+const eyeLean = (msgs) => msgs.map((m) => { const o = { ...m }; for (const k of EYE_DROP) delete o[k];
+  if (o.tableData && Array.isArray(o.tableData.cells)) o.tableData = { ...o.tableData, cells: o.tableData.cells.map((r) => (r || []).map((c) => { if (!c) return c; const q = { ...c }; for (const k of EYE_DROP) delete q[k]; return q; })) };
+  return o; });
+const eyeStart = (key, msgs) => {
+  try { const s = localStorage.getItem(key + ":start"); if (s) return JSON.parse(s); } catch (e) {  }
+  const lean = eyeLean(msgs); try { localStorage.setItem(key + ":start", JSON.stringify(lean)); } catch (e) {  }
+  return lean;
+};
+window.__eyeRecordName = (msgs) => {
+  const K = window.__K, k = K.key(msgs), meta = msgs.find((m) => m.type === "meta") || {};
+  const part = k === "A" && meta.part === "문제" ? "본문" : meta.part || "파트모름";
+  const d = new Date(), p2 = (n) => String(n).padStart(2, "0");
+  return `눈검수기록_전달용_${k ? (k === "A" ? K.nA : K.nB) : "업체모름"}_${part}_${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}.json`;
+};
+window.__eyeRecord = async ({ download = true } = {}) => {
+  const S = window.__eyeS; if (!S || !S.key) return "먼저 눈검수를 열기";
+  const now = (await window.__K.exportRendered()).messages, name = window.__eyeRecordName(now);
+  const rec = { kind: "눈검수기록", tool: (window.__kitCfg || {}).ver || "", at: new Date().toISOString(), name,
+    summary: window.__eyeText(), items: S.items.map(({ beforePng, afterPng, _baP, _ba, _baK, ...x }) => x), log: S.log || [],
+    start: S.start || null, end: eyeLean(now) };
+  const txt = JSON.stringify(rec);
+  if (download) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "application/json" })); a.download = name;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); }
+  return `${name} · ${Math.round(txt.length / 1024)}KB · 찾은 것 ${rec.items.length} · 적용 기록 ${rec.log.length}${rec.start ? "" : " · 주의: 켰을 때 JSON 없음"}`;
+};
+const eyeFind = ({ index, no, part, from }) => {
+  const S = window.__eyeS;
+  if (index != null) return S.msgs.find((m) => m.index === index);
+  const n = String(no || "").padStart(4, "0"), W = (m) => S.where[m.index] || "";
+  let cand = no ? S.msgs.filter((m) => W(m).includes(" " + n)) : [];
+  if (part) { const c2 = (cand.length ? cand : S.msgs).filter((m) => W(m).includes(part)); if (c2.length) cand = c2; }
+  return (from && cand.find((m) => (m.latex || "").includes(from))) || cand[0];
+};
+const eyePageOf = (index) => (window.__eyeS.pages || []).findIndex((p) => p && p.boxes.some((b) => b.index === index));
+const EYE_GUIDE = `눈검수 — 쪽 그림을 책 보듯 보고, 자동 도구가 못 잡은 '사람이 고칠 만한 이상한 곳'을 찾는다.
+보는 법: __eyePage(n) 으로 n쪽(폭 맞춤) → __eyeTo(1)·__eyeTo(2)·__eyeTo(3) 위/가운데/아래마다 화면을 찍어 본다. 의심 곳만 확대(zoom). 한 쪽 다 보면 다음 쪽.
+볼 것: 1 띄어쓰기 벌어짐(수식 뒤 조사 앞 틈 등) 2 줄 시작 자리 어긋남(접힌 줄이 맨 왼쪽) 3 겹침·잘림·칸 밖 4 깨진 표시(명령어 글자·빈 네모·이상한 기호·분수 깨짐)
+  5 튀는 글자(크기·굵기·장평) 6 수식 묶음 모양(= 세로줄·꼬리 오른쪽 끝) 7 선지·보기 배열 8 표·그림 9 줄이 . , ) ? 로 시작 10 같은 꼴 다른 처리 11 간격 12 그 밖에 조판하는 사람이 고칠 곳
+안 볼 것: 어절이 줄 끝에서 쪼개짐 · 배치(빈 곳·문제가 다음 단/쪽으로) · 한 글자만 다음 줄 · 쪽 머리·꼬리표·아이콘·디자인 요소(유형 박스 제목 넘침 포함)
+올리기: __eyeAdd({no:"0091", part:"풀이", what:"보이는 그대로 짧게", fix:"이렇게 고치면 됨", from:"원문 LaTeX 조각", to:"고친 조각", conf:"높음|중간|낮음", kind:"깨짐|새 꼴|간격"})
+  no = 상자 위 4자리 화면 번호. 번호 없는 자리(유형 박스·개념)는 no 없이 part:"유형 12 박스". from 은 그 칸에 한 곳만 있게 앞뒤 글을 붙인다. from/to 를 모르면 빼도 된다(원문은 카드의 [전체 LaTeX] 로 사람이 본다). 원문 확인은 __eyeLatex("0091") .
+  확실하지 않으면 '낮음'으로라도 올린다(사람이 고른다). 같은 꼴이 여러 번이면 전부.
+잘못 올렸으면 __eyeDel(번호).
+끝나면: __eyeList() 로 올린 것 확인 · 사람에게 "팝업 카드에서 판정·적용하세요"라고 알린다. 적용·[관리자용 기록 저장]은 사람이 누른다.`;
+window.__eyeGuide = () => EYE_GUIDE;
+window.__eyeOpen = ({ from = 1, to = 999 } = {}) => {
+  const s = (window.__kitCfg || {}).sel || {};
+  if (!s.preview) return "눈검수를 못 씀 — 북마크 '도구'가 옛것(미리보기 손잡이 설정 없음). 북마크를 새로 만들기";
+  const S = window.__eyeS = window.__eyeS || {};
+  if (S.busy) return "이미 뽑는 중 — " + S.msg;
+  S.busy = true; S.msg = "준비 중"; S.mode = S.mode || {}; S.mine = S.mine || {}; S.full = S.full || {}; S.ba = S.ba || {}; S.items = S.items || [];
+  eyeUI(); eyeBar();
+  (async () => {
+    try {
+      const loading = () => document.getElementById(s.loading)?.classList.contains("on");
+      for (let i = 0; i < 180 && loading(); i++) { S.msg = "미리보기 준비가 끝나기를 기다리는 중"; eyeBar(); await sleep(1000); }
+      if (!eyePages().length) {
+        S.msg = "미리보기 여는 중"; eyeBar();
+        document.getElementById(s.previewBtn)?.click();
+        for (let i = 0; i < 180 && (!eyePages().length || loading()); i++) await sleep(1000);
+        if (!eyePages().length) throw new Error("미리보기가 안 열림 — 파일을 먼저 불러오기");
+        await sleep(1500);
+      }
+      const msgs = (await window.__K.exportRendered()).messages, key = eyeKey(msgs);
+      if (S.key !== key) {
+        S.key = key; S.items = eyeLoad(key); S.cur = 0; S.zoom = "폭"; S.open = null;
+        try { S.log = JSON.parse(localStorage.getItem(key + ":log") || "[]"); } catch (e) { S.log = []; }
+        S.start = eyeStart(key, msgs);
+        S.next = Math.max(0, ...S.items.map((x) => x.id)) + 1;
+        for (const r of window.__eyeRules(msgs)) if (!S.items.some((x) => x.index === r.index && x.from === r.from)) S.items.push({ ...r, id: S.next++, verdict: "", memo: "" });
+      }
+      S.msgs = msgs; S.where = window.__where(msgs); S.wmm = window.__eyeWmm(msgs);
+      for (const it of S.items) {
+        it.where = S.where[it.index] || it.where || "";
+        const m = msgs.find((x) => x.index === it.index);
+        if (it.applied && !(m && (m.latex || "").includes(it.applied.to))) { it.applied = null; it.verdict = ""; it.err = "전에 적용했지만 지금 문서엔 없음(저장 전에 닫혔나?) — 다시 적용"; }
+      }
+      const pages = eyePages(), last = Math.min(to, pages.length);
+      S.pages = S.pages && S.pages.length === pages.length ? S.pages : new Array(pages.length).fill(null);
+      const t0 = Date.now();
+      for (let i = from - 1; i < last; i++) { S.msg = `쪽 그림 ${i + 1} / ${last}`; eyeBar(); S.pages[i] = await eyeShotPage(pages[i]); if (i === S.cur) eyeShow(); }
+      S.msg = `쪽 ${last - from + 1}장 · ${Math.round((Date.now() - t0) / 1000)}초`;
+    } catch (e) { S.msg = "오류: " + e.message; }
+    S.busy = false; eyeSave(); eyeShow(); eyeCards();
+  })();
+  return "started — 진행은 __eyeS.msg";
+};
+window.__eyePage = (n, zoom) => { const S = window.__eyeS; if (!S || !S.pages) return "먼저 __eyeOpen()";
+  S.cur = Math.max(0, Math.min(S.pages.length - 1, n - 1)); if (zoom) S.zoom = zoom; eyeUI(); eyeShow(); eyeCards();
+  const p = S.pages[S.cur]; return p ? `${S.cur + 1} / ${S.pages.length}쪽 · 상자 ${p.boxes.length}개 · 번호 ${eyeNos(p).join(" ")}` : "이 쪽 그림이 아직 없음"; };
+window.__eyeTo = (k) => { const v = document.getElementById("__eyeView"); if (!v) return 0;
+  v.scrollTop = k === 1 ? 0 : k === 2 ? (v.scrollHeight - v.clientHeight) / 2 : k === 3 ? v.scrollHeight : k; return Math.round(v.scrollTop); };
+window.__eyeLatex = (no, part) => { const m = eyeFind({ no, part }); return m ? window.__show(`${window.__eyeS.where[m.index]}\n${m.latex}`) : "그 번호 없음"; };
+window.__eyeAdd = (o) => {
+  const S = window.__eyeS; if (!S || !S.msgs) return "먼저 __eyeOpen()";
+  const m = eyeFind(o); if (!m) return `번호 ${o.no} 를 못 찾음`;
+  if (o.from && !(m.latex || "").includes(o.from)) return `${S.where[m.index]} 에 그 글(from)이 없음 — __eyeLatex("${o.no}") 로 원문 확인`;
+  if (o.from && m.latex.split(o.from).length > 2) return `${S.where[m.index]} 에 그 글(from)이 여러 곳 — 앞뒤 글을 더 붙여 한 곳만 맞게`;
+  const it = { id: S.next++, index: m.index, where: S.where[m.index] || "", src: o.src || "AI", what: o.what || "", fix: o.fix || "", from: o.from || "", to: o.to || "",
+    conf: o.conf || "중간", kind: o.kind || "새 꼴", verdict: "", memo: "" };
+  S.items.push(it); eyeSave(); eyeCards(); eyeShow();
+  return `#${it.id} ${it.where} 올림`;
+};
+window.__eyeDel = (id) => { const S = window.__eyeS, k = (S.items || []).findIndex((x) => x.id === id);
+  if (k < 0) return "카드 없음"; if (S.items[k].applied) return "적용한 카드 — 먼저 되돌리기"; S.items.splice(k, 1); eyeSave(); eyeCards(); eyeShow(); return `#${id} 지움`; };
+window.__eyeList = () => { const S = window.__eyeS; if (!S || !S.items) return "없음";
+  return window.__show(S.items.map((x) => `#${x.id} ${x.where} · ${x.what} · ${x.src}/${x.conf} · ${x.verdict || "판정 전"}`).join("\n"), 8000); };
+window.__eyeText = () => { const S = window.__eyeS; if (!S || !S.items) return "";
+  const n = S.items.filter((x) => x.verdict === "반영 완료").length;
+  return [`눈검수 결과 · 찾은 것 ${S.items.length} · 반영 ${n}`, ...S.items.map((x) => `- ${x.where} · ${x.what}` + (x.fix ? ` → ${x.fix}` : "")
+    + ` · [${x.verdict || "판정 전"}]` + (x.memo ? ` 메모: ${x.memo}` : "") + (x.applied ? ` 적용: ${x.applied.mine ? "내 수정" : "추천대로"}` : "") + ` (${x.src}·${x.conf})`)].join("\n"); };
+window.__eyeCopy = async () => { const t = window.__eyeText(); try { await navigator.clipboard.writeText(t); return "복사함"; } catch (e) { return t; } };
+const eyeNos = (p) => [...new Set(p.boxes.map((b) => ((window.__eyeS.where[b.index] || "").match(/\d{4}/) || [])[0]).filter(Boolean))];
+async function eyePick(index) {
+  const el = eyeBoxEl(index); if (!el) throw new Error("미리보기에 그 상자가 없음");
+  el.scrollIntoView({ block: "center" }); await sleep(500);
+  const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + Math.min(20, r.height / 2);
+  const ov = document.getElementById("__eyePop"); if (ov) ov.style.pointerEvents = "none";
+  const ov0 = ov && ov.style.visibility; if (ov) ov.style.visibility = "hidden";
+  const tgt = document.elementFromPoint(x, y) || el;
+  if (ov) { ov.style.visibility = ov0; ov.style.pointerEvents = ""; }
+  for (const t of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"])
+    tgt.dispatchEvent(new (t.startsWith("pointer") ? PointerEvent : MouseEvent)(t, { bubbles: true, cancelable: true, ctrlKey: true, clientX: x, clientY: y, button: 0, buttons: t.endsWith("down") ? 1 : 0 }));
+  await sleep(700);
+}
+window.__eyeApply = async (id, { mine, whole } = {}) => {
+  const S = window.__eyeS, it = S.items.find((x) => x.id === id); if (!it) return "카드 없음";
+  S.msgs = (await window.__K.exportRendered()).messages;
+  const cur = (S.msgs.find((x) => x.index === it.index) || {}).latex || "";
+  const from = whole != null ? cur : it.from, to = whole != null ? whole : mine != null ? mine : it.to;
+  if (!from || !to || from === to) return "고칠 글이 없음 — '내가 고친 것'에서 고치거나 판정을 '고쳐줘'로";
+  const t = await window.__eyeTry(S.msgs, it.index, from, to);
+  if (t.block) { it.err = "막음 — " + t.block; eyeCards(); return "막음: " + t.block; }
+  await eyePick(it.index);
+  const h = await window.__paneReplace(from, to);
+  const after = (await window.__K.exportRendered()).messages.find((x) => x.index === it.index);
+  if (!after || !after.latex.includes(to) || after.latex === cur) { it.err = "반영 안 됨: " + h; eyeCards(); return it.err; }
+  it.applied = { from, to, mine: whole != null || mine != null, at: new Date().toISOString() }; it.verdict = "반영 완료"; it.err = "";
+  (S.log = S.log || []).push({ act: "적용", id, where: it.where, index: it.index, how: it.applied.mine ? "내 수정" : "추천대로", from, to, at: it.applied.at });
+  if (whole != null) delete S.mine[id];
+  S.msgs = (await window.__K.exportRendered()).messages; eyeSave();
+  await eyeReshot(it.index); eyeCards();
+  return `#${id} 반영 완료 · ${h}`;
+};
+window.__eyeUndo = async (id) => {
+  const S = window.__eyeS, it = S.items.find((x) => x.id === id); if (!it || !it.applied) return "적용한 것 없음";
+  await eyePick(it.index);
+  const h = await window.__paneReplace(it.applied.to, it.applied.from);
+  (S.log = S.log || []).push({ act: "되돌림", id, where: it.where, index: it.index, from: it.applied.to, to: it.applied.from, at: new Date().toISOString() });
+  it.applied = null; it.verdict = ""; S.msgs = (await window.__K.exportRendered()).messages; eyeSave();
+  await eyeReshot(it.index); eyeCards();
+  return `#${id} 되돌림 · ${h}`;
+};
+async function eyeReshot(index) {
+  const S = window.__eyeS, k = eyePageOf(index), pages = eyePages();
+  if (k < 0 || !pages[k]) return;
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+  await sleep(1200); S.pages[k] = await eyeShotPage(pages[k]); if (k === S.cur) eyeShow();
+}
+const EYE_KIND = { "깨짐": "A", "새 꼴": "B", "간격": "C" };
+const EYE_ST = [["고쳐줘", "fix"], ["아님", "no"], ["보류", "me"]];
+const EYE_CSS = `#__eyePop{--bg:#eef1f4;--panel:#fff;--ink:#1d2733;--mute:#5d6b7a;--line:#d5dce4;--soft:#f5f7f9;--accent:#2f5d8a;--a:#c8372d;--b:#b7791f;--c:#64748b;--ok:#2f855a;--add:rgba(47,133,90,.16);--del:rgba(200,55,45,.14);--mark-a:rgba(200,55,45,.18);--mark-b:rgba(183,121,31,.2);--mark-c:rgba(100,116,139,.18);
+  --sans:"Noto Sans KR","Malgun Gothic",system-ui,sans-serif;--mono:"IBM Plex Mono",Consolas,monospace;
+  position:fixed;inset:10px;z-index:100001;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 36px rgba(0,0,0,.5);display:flex;flex-direction:column;font:14px/1.55 var(--sans);overflow:hidden}
+@media (prefers-color-scheme:dark){#__eyePop{--bg:#141a21;--panel:#1c242d;--ink:#e3e8ee;--mute:#9aa8b6;--line:#2e3a46;--soft:#222c36;--accent:#7fb0e0;--a:#f0756b;--b:#e0a94a;--c:#94a3b8;--ok:#68c093;--add:rgba(104,192,147,.2);--del:rgba(240,117,107,.2);--mark-a:rgba(240,117,107,.25);--mark-b:rgba(224,169,74,.25);--mark-c:rgba(148,163,184,.22)}}
+#__eyePop *{box-sizing:border-box}
+#__eyePop .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--soft);font-size:13px}
+#__eyePop .bar b{font-weight:700} #__eyePop .sp{flex:1} #__eyePop .note{color:var(--mute)} #__eyePop .toast{font-size:12px;color:var(--accent)}
+#__eyePop .pill{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;color:#fff}
+#__eyePop .pill.A{background:var(--a)} #__eyePop .pill.B{background:var(--b)} #__eyePop .pill.C{background:var(--c)}
+#__eyePop .conf{font-size:11px;color:var(--mute)}
+#__eyePop .main{display:grid;grid-template-columns:minmax(0,1fr) 8px var(--cw,400px);flex:1;min-height:0}
+#__eyePop .mid{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--soft)}
+#__eyePop .midtop{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line)}
+#__eyePop .pages{display:flex;gap:4px;flex-wrap:wrap}
+#__eyePop .pages span{font-size:12px;padding:1px 7px;border:1px solid var(--line);border-radius:4px;cursor:pointer;color:var(--mute);background:var(--panel)}
+#__eyePop .pages span.on{border-color:var(--accent);color:var(--accent);font-weight:700} #__eyePop .pages span.has::after{content:" •";color:var(--a)}
+#__eyePop .pages span.wait{opacity:.45}
+#__eyePop .zoom{display:flex;gap:4px;align-items:center;font-size:12px;color:var(--mute)}
+#__eyePop .zoom button{font:inherit;min-width:28px;height:26px;padding:0 6px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink);cursor:pointer}
+#__eyePop .zoom .z{min-width:46px;text-align:center}
+#__eyeView{flex:1;overflow:auto;padding:14px}
+#__eyeView .page{position:relative;margin:0 auto;background:#fff}
+#__eyeView .page img{display:block;width:100%;height:auto}
+#__eyeView .wait{padding:40px;color:var(--mute);text-align:center}
+#__eyePop .mk{position:absolute;border:2px solid var(--a);background:var(--mark-a);border-radius:3px;cursor:pointer}
+#__eyePop .mk.B{border-color:var(--b);background:var(--mark-b)} #__eyePop .mk.C{border-color:var(--c);background:var(--mark-c)}
+#__eyePop .mk .pin{position:absolute;left:-11px;top:-11px;width:20px;height:20px;border-radius:50%;background:var(--a);color:#fff;font:700 11px/20px var(--sans);text-align:center}
+#__eyePop .mk.B .pin{background:var(--b)} #__eyePop .mk.C .pin{background:var(--c)}
+#__eyePop .mk.done{border:2px dashed var(--ok);background:transparent} #__eyePop .mk.done .pin{background:var(--ok)}
+#__eyePop .mk.no{border-style:dotted;background:transparent;opacity:.6}
+#__eyePop .mk.on{box-shadow:0 0 0 3px var(--accent);animation:eyeblink 1s ease 2}
+@keyframes eyeblink{50%{box-shadow:0 0 0 6px transparent}}
+#__eyePop .split{cursor:col-resize;background:var(--line);position:relative;touch-action:none}
+#__eyePop .split::after{content:"";position:absolute;inset:45% 2px;border-left:2px dotted var(--mute);border-right:2px dotted var(--mute)}
+#__eyePop .split:hover,#__eyePop .split.drag{background:var(--accent)}
+#__eyePop .cards{overflow:auto;min-width:0;background:var(--panel)}
+#__eyePop .empty{padding:24px 14px;color:var(--mute)}
+#__eyePop .card{border-bottom:1px solid var(--line);padding:10px 12px;display:grid;gap:6px}
+#__eyePop .card .hd{cursor:pointer;display:grid;gap:3px} #__eyePop .card.on{background:var(--soft);box-shadow:inset 3px 0 0 var(--accent)}
+#__eyePop .card .body{display:none;gap:10px} #__eyePop .card.on .body{display:grid}
+#__eyePop .card.done .hd{opacity:.62} #__eyePop .card.done.on .hd{opacity:1}
+#__eyePop .top{display:flex;gap:6px;align-items:center;flex-wrap:wrap} #__eyePop .where{font-weight:700} #__eyePop .what{color:var(--ink);font-size:13.5px}
+#__eyePop .num{font:700 11px/18px var(--sans);min-width:18px;height:18px;border-radius:50%;background:var(--mute);color:#fff;text-align:center}
+#__eyePop .tick{width:18px;height:18px;border-radius:50%;background:var(--ok);color:#fff;font:700 11px/18px var(--sans);text-align:center}
+#__eyePop .chip{font-size:11px;padding:0 6px;border-radius:4px;border:1px solid var(--line);color:var(--mute)}
+#__eyePop .chip.s-fix{color:var(--accent);border-color:var(--accent)} #__eyePop .chip.s-me{color:var(--b);border-color:var(--b)} #__eyePop .chip.s-no{text-decoration:line-through}
+#__eyePop .chip.s-done{color:var(--ok);border-color:var(--ok);font-weight:700}
+#__eyePop .from{font-size:11px;padding:0 6px;border-radius:4px;background:var(--panel);border:1px solid var(--line);color:var(--mute)}
+#__eyePop .from.rule{color:var(--ok);border-color:var(--ok)} #__eyePop .from.ai{color:var(--accent);border-color:var(--accent)}
+#__eyePop .problem{border-left:4px solid var(--a);background:var(--panel);border-radius:4px;padding:10px 12px;display:grid;gap:8px}
+#__eyePop .problem.B{border-left-color:var(--b)} #__eyePop .problem.C{border-left-color:var(--c)}
+#__eyePop .problem .lab{font-size:11.5px;font-weight:700;color:var(--mute);letter-spacing:.04em}
+#__eyePop .problem .q{font-size:15.5px;font-weight:700;line-height:1.5} #__eyePop .problem .fx{font-size:14.5px;line-height:1.55}
+#__eyePop .k{font-size:12px;color:var(--mute);margin-bottom:3px;display:flex;gap:8px;align-items:center} #__eyePop .k button{margin-left:auto}
+#__eyePop code{font-family:var(--mono);font-size:12.5px;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:6px 8px;display:block;overflow-x:auto;white-space:pre-wrap;word-break:break-all;user-select:text}
+#__eyePop .full{max-height:260px;overflow:auto}
+#__eyePop .st,#__eyePop .tools{display:flex;gap:6px;flex-wrap:wrap}
+#__eyePop button.s{font:inherit;font-size:12.5px;padding:4px 10px;border-radius:5px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+#__eyePop button.s.go{border-color:var(--accent);color:var(--accent)} #__eyePop button.s[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+#__eyePop button.s:disabled{opacity:.45;cursor:not-allowed}
+#__eyePop .btn{font:inherit;font-size:13px;padding:5px 12px;border-radius:5px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+#__eyePop .btn.ghost{background:transparent;color:var(--accent)}
+#__eyePop .x{font:inherit;font-size:16px;width:32px;height:32px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+#__eyePop textarea{font:inherit;width:100%;min-height:54px;border:1px solid var(--line);border-radius:5px;padding:6px 8px;background:var(--panel);color:var(--ink);resize:vertical}
+#__eyePop textarea.mono{font-family:var(--mono);font-size:12.5px;min-height:150px}
+#__eyePop .lint{font-size:12.5px;padding:6px 8px;border-radius:4px;border:1px solid var(--line)}
+#__eyePop .lint.ok{color:var(--ok);border-color:var(--ok)} #__eyePop .lint.bad{color:var(--a);border-color:var(--a);background:var(--del)}
+#__eyePop .ba{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+#__eyePop .ba figure{margin:0;display:grid;gap:4px} #__eyePop .ba figcaption{font-size:12px;color:var(--mute)}
+#__eyePop .ba img,#__eyePop .ba canvas{width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#fff;cursor:zoom-in}
+#__eyePop .ph{border:1px dashed var(--line);border-radius:4px;display:grid;place-items:center;min-height:60px;padding:8px;font-size:12px;color:var(--mute);text-align:center;background:var(--panel)}
+#__eyePop .diff div{padding:0 4px} #__eyePop .diff .d{background:var(--del)} #__eyePop .diff .a{background:var(--add)}
+#__eyePop .diff .d::before{content:"− ";color:var(--a)} #__eyePop .diff .a::before{content:"+ ";color:var(--ok)}
+#__eyePop .seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+#__eyePop .seg button{font:inherit;font-size:12.5px;border:0;padding:4px 10px;background:var(--panel);color:var(--ink);cursor:pointer}
+#__eyePop .seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+#__eyePop .donebar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ok);font-weight:700}
+#__eyePop .er{color:var(--a);font-size:12.5px;font-weight:700}
+#__eyePop .prog{display:inline-block;width:70px;height:6px;border-radius:3px;background:var(--line);vertical-align:middle;overflow:hidden} #__eyePop .prog i{display:block;height:100%;background:var(--ok)}
+#__eyePop .help{font-size:12px;color:var(--mute);padding:6px 12px;border-top:1px solid var(--line);background:var(--soft)}
+#__eyeBig{position:fixed;inset:0;z-index:100002;background:rgba(10,14,20,.82);display:grid;place-items:center;padding:24px;cursor:zoom-out}
+#__eyeBig img{max-width:96vw;max-height:88vh;background:#fff;border-radius:6px} #__eyeBig p{color:#fff;margin:8px 0 0;text-align:center;font:13px sans-serif}`;
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const eyeK = (it) => EYE_KIND[it.kind] || "B";
+const eyeStCls = (it) => it.verdict === "반영 완료" ? "done" : ((EYE_ST.find((s) => s[0] === it.verdict) || [])[1] || "new");
+const eyeToast = (m) => { const t = document.getElementById("__eyeToast"); if (t) t.textContent = m; };
+const eyeDiff = (a, b) => {
+  const A = a.split("\n"), B = b.split("\n"), SA = new Set(A), SB = new Set(B), out = []; let i = 0, j = 0;
+  while (i < A.length || j < B.length) {
+    if (i < A.length && j < B.length && A[i] === B[j]) { out.push(`<div>${esc(A[i])}</div>`); i++; j++; }
+    else if (i < A.length && !SB.has(A[i])) out.push(`<div class="d">${esc(A[i++])}</div>`);
+    else if (j < B.length && !SA.has(B[j])) out.push(`<div class="a">${esc(B[j++])}</div>`);
+    else { if (i < A.length) out.push(`<div class="d">${esc(A[i++])}</div>`); if (j < B.length) out.push(`<div class="a">${esc(B[j++])}</div>`); }
+  }
+  return out.join("");
+};
+const eyeMsg = (it) => ((window.__eyeS.msgs || []).find((x) => x.index === it.index) || {});
+function eyeUI() {
+  let ov = document.getElementById("__eyePop");
+  if (ov) { ov.style.display = "flex"; return ov; }
+  if (!document.getElementById("__eyeCss")) { const st = document.createElement("style"); st.id = "__eyeCss"; st.textContent = EYE_CSS; document.head.appendChild(st); }
+  ov = document.createElement("div"); ov.id = "__eyePop";
+  ov.innerHTML = `<div class="bar"><b>👁 눈검수</b><span id="__eyeFile"></span><span id="__eyeMsg" class="note"></span><span class="sp"></span>
+  <span id="__eyeToast" class="toast" role="status"></span><span id="__eyeCnt" class="note"></span>
+  <button class="btn ghost" data-a="redo" type="button" title="쪽 그림을 다시 뽑고 규칙 추천을 다시 봄(고친 뒤 뒤 쪽이 밀렸을 때도)">다시 검수</button>
+  <button class="btn ghost" data-a="rec" type="button" title="켰을 때·지금 JSON(그림 뺀 LaTeX 판) + 찾은 것·판정·메모·적용 기록을 파일 하나로 내려받기 — 관리자에게 전달">관리자용 기록 저장</button>
+  <button class="btn" data-a="copy" type="button" title="찾은 것 · 판정 · 메모를 글로 복사 — 메신저나 AI 대화에 붙여 넣기">결과 글로 복사</button>
+  <button class="x" data-a="close" type="button" title="닫기 — 찾은 것·판정은 남음(오른쪽 아래 [👁 눈검수]로 다시 열기)">✕</button></div>
+<div class="main"><div class="mid"><div class="midtop"><div class="pages" id="__eyePages"></div><span class="sp"></span>
+  <div class="zoom"><button data-z="-1" type="button" title="축소">−</button><span class="z" id="__eyeZ"></span><button data-z="1" type="button" title="확대">+</button>
+  <button data-z="w" type="button" title="쪽 폭에 맞춤 — 글이 또렷">폭 맞춤</button><button data-z="h" type="button" title="쪽 전체">쪽 전체</button><span>Ctrl+휠</span></div></div>
+  <div id="__eyeView"></div></div>
+<div class="split" role="separator" aria-orientation="vertical" title="끌어서 카드 줄 폭 바꾸기"></div><div class="cards" id="__eyeCards"></div></div>
+<div class="help">상자 위 번호 = 카드 번호 · 카드를 누르면 펼쳐지고 쪽이 그 자리로 · 적용은 청크 LaTeX 창으로 들어가고(되돌리기 됨) 끝나면 💾 저장은 따로 · 결과 글로 복사 = 메신저나 AI 대화에 붙이기</div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener("click", eyeClick);
+  ov.addEventListener("input", eyeInput);
+  ov.addEventListener("change", (e) => { const id = +(e.target.dataset.memo || 0); if (id) { const it = window.__eyeS.items.find((x) => x.id === id); if (it) { it.memo = e.target.value; eyeSave(); } } });
+  const view = ov.querySelector("#__eyeView"), S = window.__eyeS;
+  view.addEventListener("wheel", (e) => { if (!e.ctrlKey) return; e.preventDefault(); S.zoom = Math.max(0.2, Math.min(4, eyeScale() * (e.deltaY < 0 ? 1.1 : 0.9))); eyeShow(); }, { passive: false });
+  const sl = ov.querySelector(".split");
+  sl.addEventListener("pointerdown", (e) => { sl.setPointerCapture(e.pointerId); sl.classList.add("drag");
+    const mv = (ev) => ov.style.setProperty("--cw", Math.max(280, Math.min(innerWidth * 0.75, ov.getBoundingClientRect().right - ev.clientX)) + "px");
+    sl.addEventListener("pointermove", mv); sl.addEventListener("pointerup", () => { sl.removeEventListener("pointermove", mv); sl.classList.remove("drag"); }, { once: true }); });
+  return ov;
+}
+function eyeBar() {
+  const S = window.__eyeS; if (!document.getElementById("__eyePop")) return;
+  const N = (S.items || []).length, n = (S.items || []).filter((x) => x.verdict === "반영 완료" || x.verdict === "아님").length;
+  document.getElementById("__eyeMsg").textContent = S.busy ? "⏳ " + S.msg : S.msg || "";
+  document.getElementById("__eyeFile").textContent = S.where ? `${(S.msgs.find((m) => m.type === "meta") || {}).part || ""} · ${S.pages ? S.pages.length : 0}쪽` : "";
+  document.getElementById("__eyeCnt").innerHTML = N ? `<span class="prog"><i style="width:${n / N * 100}%"></i></span> 해결 ${n} / ${N}` : "";
+  const has = new Set((S.items || []).map((x) => eyePageOf(x.index)));
+  document.getElementById("__eyePages").innerHTML = (S.pages || []).map((p, i) => `<span data-page="${i}" class="${i === S.cur ? "on " : ""}${has.has(i) ? "has " : ""}${p ? "" : "wait"}">${i + 1}</span>`).join("");
+}
+const eyeScale = () => { const S = window.__eyeS, p = S.pages && S.pages[S.cur], v = document.getElementById("__eyeView");
+  if (!p || !v) return 1; if (typeof S.zoom === "number") return S.zoom;
+  return S.zoom === "쪽" ? (v.clientHeight - 30) / p.h : (v.clientWidth - 46) / p.w; };
+function eyeShow() {
+  const S = window.__eyeS, v = document.getElementById("__eyeView"); if (!v) return;
+  eyeBar();
+  const p = S.pages && S.pages[S.cur];
+  if (!p) { v.innerHTML = `<div class="wait">${S.busy ? "쪽 그림 뽑는 중…" : "쪽 그림 없음 — [다시 검수]"}</div>`; return; }
+  const k = eyeScale(); document.getElementById("__eyeZ").textContent = Math.round(k / ((v.clientWidth - 46) / p.w) * 100) + "%";
+  const marks = (S.items || []).map((it) => { const b = p.boxes.find((x) => x.index === it.index); if (!b) return "";
+    const st = eyeStCls(it);
+    return `<div class="mk ${eyeK(it)}${st === "done" ? " done" : st === "no" ? " no" : ""}${S.open === it.id ? " on" : ""}" data-id="${it.id}" title="${esc(it.where + " · " + it.what)}" style="left:${b.x * k}px;top:${b.y * k}px;width:${b.w * k}px;height:${b.h * k}px"><span class="pin">${st === "done" ? "✓" : it.id}</span></div>`; }).join("");
+  const top = v.scrollTop;
+  v.innerHTML = `<div class="page" style="width:${p.w * k}px"><img alt="${S.cur + 1}쪽 그림" src="${p.png}">${marks}</div>`;
+  v.scrollTop = top;
+  if (S.goSel) { S.goSel = false; const it = S.items.find((x) => x.id === S.open), b = it && p.boxes.find((x) => x.index === it.index); if (b) v.scrollTop = Math.max(0, b.y * k - 60); }
+}
+function eyeCards() {
+  const S = window.__eyeS, box = document.getElementById("__eyeCards"); if (!box) return;
+  eyeBar();
+  const keep = box.scrollTop;
+  const list = S.items || [];
+  box.innerHTML = list.length ? list.map(eyeCard).join("") : `<div class="empty">${S.busy ? "쪽 그림을 뽑는 중…" : "찾은 것 없음 — 크롬 AI 에게 \"눈검수 해줘\"라고 하면 찾아서 여기 올립니다."}</div>`;
+  box.scrollTop = keep;
+  const it = list.find((x) => x.id === S.open); if (it) eyeBA(it);
+}
+function eyeCard(it) {
+  const S = window.__eyeS, on = S.open === it.id, st = eyeStCls(it), m = eyeMsg(it), lx = m.latex || "";
+  const stName = it.verdict || "새로 찾음", src = it.src === "규칙" ? ["rule", "규칙 추천"] : ["ai", "AI 판단 추천"];
+  const head = `<div class="hd" data-id="${it.id}"><div class="top">${st === "done" ? '<span class="tick">✓</span>' : `<span class="num">${it.id}</span>`}<span class="pill ${eyeK(it)}">${esc(it.kind)}</span><span class="where">${esc(it.where)}</span><span class="conf">확신 ${esc(it.conf)}</span><span class="from ${src[0]}">${src[1]}</span><span class="chip s-${st}">${esc(stName)}</span></div><div class="what">${esc(it.what)}</div></div>`;
+  if (!on) return `<div class="card${st === "done" ? " done" : ""}">${head}</div>`;
+  const key = it.applied ? it.applied.to : it.from, at = key && key.length < 400 ? lx.indexOf(key) : -1;
+  const part = at >= 0 ? (at > 50 ? "…" : "") + lx.slice(Math.max(0, at - 50), at + key.length + 50) + (at + key.length + 50 < lx.length ? "…" : "") : "";
+  const mode = S.mode[it.id] || (it.to ? "ai" : "mine");
+  let ba = "";
+  if (S.ba[it.id] !== false) {
+    const seg = `<div class="seg"><button type="button" data-mode="ai" data-id="${it.id}" aria-pressed="${mode === "ai"}">AI 추천대로</button><button type="button" data-mode="mine" data-id="${it.id}" aria-pressed="${mode === "mine"}">내가 고친 것</button></div>`;
+    if (it.applied) ba = `<div class="ba"><figure><figcaption>전(적용 전)</figcaption><img data-b="before" alt="적용 전"></figure><figure><figcaption>후(지금 — ${it.applied.mine ? "내가 고친 것" : "추천대로"})</figcaption><img data-b="after" alt="지금"></figure></div>
+      <div><div class="k">바뀐 LaTeX</div><div class="code diff">${eyeDiff(it.applied.from, it.applied.to)}</div></div>`;
+    else if (mode === "ai") ba = `<div>${seg}</div>` + (it.to ? `<div class="ba"><figure><figcaption>전(지금)</figcaption><img data-b="before" alt="지금"></figure><figure><figcaption>후(추천 LaTeX 렌더)</figcaption><img data-b="after" alt="추천대로"></figure></div>
+        <div><div class="k">바뀌는 LaTeX</div><div class="code diff">${eyeDiff(it.from, it.to)}</div></div>
+        <div class="tools"><button class="s go" type="button" data-apply="ai" data-id="${it.id}">이대로 적용</button><button class="s go" type="button" data-apply="ai-next" data-id="${it.id}">적용하고 다음</button><button class="s" type="button" data-st="고쳐줘" data-id="${it.id}">나중에 모아서(고쳐줘)</button></div>`
+      : `<div class="ba"><figure><figcaption>전(지금 쪽 그림)</figcaption><canvas data-crop="${it.id}"></canvas></figure></div><div class="ph">추천 없음 — '내가 고친 것'으로 직접 고치거나 판정에서 고쳐줘(메모에 원하는 모양)</div>`);
+    else {
+      const v = S.mine[it.id] != null ? S.mine[it.id] : lx, bad = window.__eyeSyntax(v), same = v === lx;
+      ba = `<div>${seg}</div><div><div class="k">이 청크 LaTeX — 직접 고쳐 보기 (선택된 곳 = 해당 부분)<button class="s" type="button" data-goto="${it.id}">해당 부분으로</button></div><textarea class="mono" data-mine="${it.id}">${esc(v)}</textarea></div>
+        <div data-lint="${it.id}">${eyeLint(bad)}</div>
+        <div><div class="k">원본과 다른 곳</div><div class="code diff" data-mdiff="${it.id}">${same ? "<div>아직 바뀐 곳 없음</div>" : eyeDiff(lx, v)}</div></div>
+        <div class="ba"><figure><figcaption>전</figcaption><img data-b="before" alt="지금"></figure><figure><figcaption>후(고친 LaTeX 렌더)</figcaption><img data-b="mine" alt="내가 고친 것"></figure></div>
+        <div class="tools"><button class="s go" type="button" data-apply="mine" data-id="${it.id}"${bad.length || same ? " disabled" : ""}>내 수정 적용</button><button class="s go" type="button" data-apply="mine-next" data-id="${it.id}"${bad.length || same ? " disabled" : ""}>적용하고 다음</button><button class="s" type="button" data-reset="${it.id}">원래대로</button></div>`;
+    }
+  }
+  return `<div class="card on${st === "done" ? " done" : ""}">${head}<div class="body">
+    <div class="problem ${eyeK(it)}"><div><div class="lab">무엇이 문제인가</div><div class="q">${esc(it.what)}</div></div>
+      ${it.fix ? `<div><div class="lab">이렇게 고치면 됩니다 <span class="from ${src[0]}">${src[1]}</span></div><div class="fx">${esc(it.fix)}</div></div>` : ""}</div>
+    ${part ? `<div><div class="k">원문 LaTeX (해당 부분)<button class="s" type="button" data-copy="src" data-id="${it.id}">복사</button></div><code>${esc(part)}</code></div>` : ""}
+    <div class="tools"><button class="s" type="button" data-full="${it.id}" aria-pressed="${!!S.full[it.id]}">전체 LaTeX(이 청크)</button><button class="s" type="button" data-ba="${it.id}" aria-pressed="${S.ba[it.id] !== false}">전/후 보기</button></div>
+    ${S.full[it.id] ? `<div><div class="k">이 청크 전체 LaTeX<button class="s" type="button" data-copy="full" data-id="${it.id}">복사</button></div><code class="full">${esc(lx)}</code></div>` : ""}
+    ${it.err ? `<div class="er">${esc(it.err)}</div>` : ""}
+    ${ba}
+    <div><div class="k">판정</div>${it.verdict === "반영 완료" ? `<div class="donebar">✓ 반영 완료 (${it.applied && it.applied.mine ? "내가 고친 것" : "추천대로"})<button class="s" type="button" data-undo="${it.id}">되돌리기</button></div>`
+      : `<div class="st">${EYE_ST.map(([n]) => `<button class="s" type="button" data-st="${n}" data-id="${it.id}" aria-pressed="${it.verdict === n}">${n}</button>`).join("")}</div>`}</div>
+    <div><div class="k">메모 (AI·관리자에게)</div><textarea data-memo="${it.id}" placeholder="예: 여기는 탭 하나만 / 원고가 원래 이래요">${esc(it.memo)}</textarea></div>
+  </div></div>`;
+}
+const eyeLint = (bad) => bad.length ? `<div class="lint bad">✗ 적용할 수 없음 — ${esc(bad.join(" · "))}</div>` : `<div class="lint ok">✓ 문법 짝 맞음 · 적용 전에 렌더로 한 번 더 확인(넘침·처음 보는 명령은 막음)</div>`;
+async function eyeClick(e) {
+  const S = window.__eyeS, t0 = e.target;
+  if (t0.closest(".ba img, .ba canvas")) { const el = t0.closest("img, canvas"), src = el.tagName === "IMG" ? el.src : el.toDataURL();
+    if (!src) return; const bg = document.createElement("div"); bg.id = "__eyeBig"; bg.innerHTML = `<div><img src="${src}"><p>${esc(el.closest("figure").querySelector("figcaption").textContent)} · 누르면 닫기</p></div>`; bg.onclick = () => bg.remove(); document.body.appendChild(bg); return; }
+  const t = t0.closest("[data-a],[data-page],[data-z],[data-st],[data-full],[data-ba],[data-mode],[data-copy],[data-goto],[data-apply],[data-reset],[data-undo],.mk,.hd"); if (!t) return;
+  if (t.classList.contains("hd") && String(window.getSelection()).trim()) return;
+  const d = t.dataset, a = d.a, id = +(d.id || d.undo || d.full || d.ba || d.goto || d.reset || 0), it = S.items.find((x) => x.id === id);
+  if (a === "close") { document.getElementById("__eyePop").style.display = "none"; return; }
+  if (a === "rec") { eyeToast("기록 묶는 중…"); eyeToast("내려받음: " + await window.__eyeRecord()); return; }
+  if (a === "copy") { eyeToast(await window.__eyeCopy() === "복사함" ? "결과 글 복사함" : "복사가 막혀 있음 — __eyeText() 결과를 쓰기"); return; }
+  if (a === "redo") { S.pages = null; S.key = null; window.__eyeOpen(); return; }
+  if (t.dataset.page != null) { S.cur = +t.dataset.page; eyeShow(); return; }
+  if (t.dataset.z) { const z = t.dataset.z; S.zoom = z === "w" ? "폭" : z === "h" ? "쪽" : Math.max(0.2, Math.min(4, eyeScale() * (z === "1" ? 1.25 : 0.8))); eyeShow(); return; }
+  if (!it) return;
+  if (t.classList.contains("mk") || t.classList.contains("hd")) {
+    S.open = S.open === id && t.classList.contains("hd") ? null : id;
+    const k = eyePageOf(it.index); if (k >= 0) S.cur = k; S.goSel = true; eyeShow(); eyeCards();
+    if (t.classList.contains("mk")) document.querySelector(`#__eyeCards .card.on`)?.scrollIntoView({ block: "nearest" });
+    return;
+  }
+  if (t.dataset.st) { it.verdict = it.verdict === t.dataset.st ? "" : t.dataset.st; eyeSave(); eyeShow(); eyeCards(); return; }
+  if (t.dataset.full) { S.full[id] = !S.full[id]; eyeCards(); return; }
+  if (t.dataset.ba) { S.ba[id] = S.ba[id] === false; eyeCards(); return; }
+  if (t.dataset.mode) { S.mode[id] = t.dataset.mode; eyeCards(); if (t.dataset.mode === "mine") eyeGoto(it, false); return; }
+  if (t.dataset.goto) { eyeGoto(it, true); return; }
+  if (t.dataset.reset) { delete S.mine[id]; it._mine = null; eyeCards(); return; }
+  if (t.dataset.copy) { const lx = eyeMsg(it).latex || "", key = it.applied ? it.applied.to : it.from;
+    try { await navigator.clipboard.writeText(t.dataset.copy === "full" ? lx : key); eyeToast(t.dataset.copy === "full" ? "전체 LaTeX 복사함" : "원문 복사함"); } catch (err) { eyeToast("복사가 막혀 있음 — 글을 드래그해서 복사"); } return; }
+  t.disabled = true; const old = t.textContent; t.textContent = "확인 중…";
+  let r = "";
+  try {
+    if (t.dataset.apply) r = await window.__eyeApply(id, /mine/.test(t.dataset.apply) ? { whole: S.mine[id] } : {});
+    else if (t.dataset.undo) r = await window.__eyeUndo(id);
+  } catch (err) { r = "멈춤: " + err.message; it.err = r; }
+  eyeToast(r);
+  if (/next/.test(t.dataset.apply || "") && it.verdict === "반영 완료") { const nx = S.items.find((x) => x.id > id && !x.verdict) || S.items.find((x) => !x.verdict);
+    if (nx) { S.open = nx.id; const k = eyePageOf(nx.index); if (k >= 0) S.cur = k; S.goSel = true; } }
+  t.textContent = old; eyeShow(); eyeCards();
+}
+let eyeTimer = 0;
+function eyeInput(e) {
+  const id = +(e.target.dataset.mine || 0); if (!id) return;
+  const S = window.__eyeS, it = S.items.find((x) => x.id === id), lx = eyeMsg(it).latex || "", v = e.target.value;
+  S.mine[id] = v;
+  const bad = window.__eyeSyntax(v), same = v === lx, card = e.target.closest(".card");
+  card.querySelector(`[data-lint="${id}"]`).innerHTML = eyeLint(bad);
+  card.querySelector(`[data-mdiff="${id}"]`).innerHTML = same ? "<div>아직 바뀐 곳 없음</div>" : eyeDiff(lx, v);
+  card.querySelectorAll("[data-apply]").forEach((b) => (b.disabled = !!(bad.length || same)));
+  clearTimeout(eyeTimer);
+  eyeTimer = setTimeout(async () => { if (bad.length) return; const r = await window.__eyeRender(v, { wmm: S.wmm }); const img = card.querySelector('img[data-b="mine"]'); if (img && r.png) img.src = r.png; }, 600);
+}
+function eyeGoto(it, focus) {
+  const ta = document.querySelector(`#__eyeCards textarea[data-mine="${it.id}"]`); if (!ta) return;
+  const key = it.from || ""; const at = key ? ta.value.indexOf(key) : -1;
+  if (at < 0) { if (focus) eyeToast("해당 부분을 못 찾음 — 고친 뒤 글이 달라졌을 수 있음"); return; }
+  ta.focus({ preventScroll: true }); ta.setSelectionRange(at, at + key.length);
+  const lh = parseFloat(getComputedStyle(ta).lineHeight) || 18; ta.scrollTop = Math.max(0, (ta.value.slice(0, at).split("\n").length - 2) * lh);
+}
+async function eyeBA(it) {
+  const S = window.__eyeS, m = eyeMsg(it); if (!m.latex) return;
+  const k = `${m.latex.length}:${it.applied ? it.applied.to.length : it.to}`;
+  if (it._ba !== k) {
+    if (it._baK !== k) {
+      it._baK = k;
+      it._baP = (async () => {
+        let b = "", a = "", err = "";
+        if (it.applied) { b = (await window.__eyeRender(m.latex.replace(it.applied.to, it.applied.from), { wmm: S.wmm })).png; a = (await window.__eyeRender(m.latex, { wmm: S.wmm })).png; }
+        else { const r0 = await window.__eyeRender(m.latex, { wmm: S.wmm }); b = r0.png; if (!r0.ok) err = "전 그림을 못 그림 — " + r0.error;
+          if (it.to) { const t = await window.__eyeTry(S.msgs, it.index, it.from, it.to); a = t.after && t.after.png; if (t.block) err = "추천대로 하면 막힘 — " + t.block; } }
+        it.beforePng = b; it.afterPng = a; it._ba = k;
+        if (err && it.err !== err) { it.err = err; eyeCards(); }
+      })();
+    }
+    await it._baP;
+  }
+  const card = document.querySelector("#__eyeCards .card.on"); if (!card || S.open !== it.id) return;
+  const put = (sel, png) => { const im = card.querySelector(`img[data-b="${sel}"]`); if (im && png) im.src = png; };
+  put("before", it.beforePng); put("after", it.afterPng);
+  if (S.mine[it.id] != null && !window.__eyeSyntax(S.mine[it.id]).length) put("mine", (await window.__eyeRender(S.mine[it.id], { wmm: S.wmm })).png); else put("mine", it.beforePng);
+  const cv = card.querySelector(`canvas[data-crop="${it.id}"]`), k2 = eyePageOf(it.index), p = k2 >= 0 && S.pages[k2], b = p && p.boxes.find((x) => x.index === it.index);
+  if (cv && b) { const im = new Image(); im.onload = () => { cv.width = Math.round(b.w); cv.height = Math.round(b.h); cv.getContext("2d").drawImage(im, b.x, b.y, b.w, b.h, 0, 0, cv.width, cv.height); }; im.src = p.png; }
+}
+window.__eyeButton = () => {
+  if (typeof document === "undefined" || !document.body || document.getElementById("__eyeBtn")) return;
+  const b = document.createElement("button"); b.id = "__eyeBtn"; b.textContent = "👁 눈검수";
+  b.style.cssText = "position:fixed;right:14px;bottom:14px;z-index:99980;font:bold 13px sans-serif;padding:6px 12px;border-radius:18px;border:0;background:#2f5d8a;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer";
+  b.onclick = () => { const S = window.__eyeS; if (S && S.pages && S.pages.some(Boolean)) { eyeUI(); eyeShow(); eyeCards(); return; }
+    const r = window.__eyeOpen(); if (/^눈검수를 못 씀/.test(r)) { b.textContent = "👁 북마크 '도구'를 새로 만들어야 씀"; b.style.background = "#c62828"; } };
+  document.body.appendChild(b);
+};
+if (typeof setTimeout === "function") setTimeout(() => { try { window.__eyeButton(); } catch (e) {  } }, 0);
+}
