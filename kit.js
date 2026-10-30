@@ -1,5 +1,5 @@
-// page-kit v2026.10.30-1816
-window.__kitBuilt = "v2026.10.30-1816";
+// page-kit v2026.10.30-1855
+window.__kitBuilt = "v2026.10.30-1855";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -2804,10 +2804,12 @@ window.__eyeRecord = async ({ download = true } = {}) => {
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); }
   return `${name} · ${Math.round(txt.length / 1024)}KB · 찾은 것 ${rec.items.length} · 적용 기록 ${rec.log.length}${rec.start ? "" : " · 주의: 켰을 때 JSON 없음"}`;
 };
+const EYE_CHOICE = /\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\}\s*(?:\\sffamily\s*)?①/;
+const eyeName = (m) => { const w = window.__eyeS.where[m.index] || ""; return !w.includes("선지") && m.type === "question" && EYE_CHOICE.test(m.latex || "") ? w + " (선지)" : w; };
 const eyeFind = ({ index, no, part, from }) => {
   const S = window.__eyeS;
   if (index != null) return S.msgs.find((m) => m.index === index);
-  const n = String(no || "").padStart(4, "0"), W = (m) => S.where[m.index] || "";
+  const n = String(no || "").padStart(4, "0"), W = eyeName;
   let cand = no ? S.msgs.filter((m) => W(m).includes(" " + n)) : [];
   if (part) { const c2 = (cand.length ? cand : S.msgs).filter((m) => W(m).includes(part)); if (c2.length) cand = c2; }
   return (from && cand.find((m) => (m.latex || "").includes(from))) || cand[0];
@@ -2818,12 +2820,17 @@ const EYE_GUIDE = `눈검수 — 쪽 그림을 책 보듯 보고, 자동 도구�
 볼 것: 1 띄어쓰기 벌어짐(수식 뒤 조사 앞 틈 등) 2 줄 시작 자리 어긋남(접힌 줄이 맨 왼쪽) 3 겹침·잘림·칸 밖 4 깨진 표시(명령어 글자·빈 네모·이상한 기호·분수 깨짐)
   5 튀는 글자(크기·굵기·장평) 6 수식 묶음 모양(= 세로줄·꼬리 오른쪽 끝) 7 선지·보기 배열 8 표·그림 9 줄이 . , ) ? 로 시작 10 같은 꼴 다른 처리 11 간격 12 그 밖에 조판하는 사람이 고칠 곳
 안 볼 것: 어절이 줄 끝에서 쪼개짐 · 배치(빈 곳·문제가 다음 단/쪽으로) · 한 글자만 다음 줄 · 쪽 머리·꼬리표·아이콘·디자인 요소(유형 박스 제목 넘침 포함)
+  · 묶음 머리(여러 문제 위 공통 발문) 첫 줄 들여쓰기 — 공통지문 번호가 들어갈 자리라 지금 꼴이 맞음 · (단, …) 이 앞 글에 붙어 있음 — 들어가면 붙이는 게 규칙(넘쳐서 쪼개질 때만 다음 줄 오른쪽 끝)
+  · 조립제법·나눗셈 표의 빈 네모(테두리 안 빈칸) — 원래 꼴
 올리기: __eyeAdd({no:"0091", part:"풀이", what:"보이는 그대로 짧게", fix:"이렇게 고치면 됨", from:"원문 LaTeX 조각", to:"고친 조각", conf:"높음|중간|낮음", kind:"깨짐|새 꼴|간격"})
-  no = 상자 위 4자리 화면 번호. 번호 없는 자리(유형 박스·개념)는 no 없이 part:"유형 12 박스". from 은 그 칸에 한 곳만 있게 앞뒤 글을 붙인다. from/to 를 모르면 빼도 된다(원문은 카드의 [전체 LaTeX] 로 사람이 본다). 원문 확인은 __eyeLatex("0091") .
+  no = 상자 위 4자리 화면 번호. 한 번호에 청크가 여럿(발문·그림·선지·표…)이니 본 자리를 part 로 꼭 준다(part:"선지") — 안 주면 첫 청크(발문)에 붙는다. 번호 없는 자리(유형 박스·개념)는 no 없이 part:"유형 12 박스". from 은 그 칸에 한 곳만 있게 앞뒤 글을 붙인다. from/to 를 모르면 빼도 된다(원문은 카드의 [전체 LaTeX] 로 사람이 본다). 원문 확인은 __eyeLatex("0091") .
   확실하지 않으면 '낮음'으로라도 올린다(사람이 고른다). 같은 꼴이 여러 번이면 전부.
 잘못 올렸으면 __eyeDel(번호).
 카드마다 그 청크의 조판 규칙 검사(LaTeX 꼴 · 그려서 줄 검사)는 도구가 붙인다 — 따로 __check 를 돌릴 필요 없음. 자동 검사(분수 깨짐 등)도 열 때 도구가 올린다.
-끝나면: __eyeList() 로 올린 것 확인 · 사람에게 "팝업 카드에서 판정·적용하세요"라고 알린다. 적용·[관리자용 기록 저장]은 사람이 누른다.`;
+끝나면: __eyeList() 로 올린 것 확인 · 사람에게 "팝업 카드에서 판정·적용하세요"라고 알린다. 적용·[관리자용 기록 저장]은 사람이 누른다.
+'고쳐줘' 처리(사람이 "고쳐줘 처리해"): __eyeTodo() — 고쳐줘 카드·메모·그 번호의 청크 전부. 메모대로 고칠 꼴을 정하고(규칙집·같은 파일의 다른 곳을 근거로)
+  __eyePlan(카드번호, {part:"선지", from:"원문 조각", to:"고친 조각", fix:"사람 말로 무엇을 어떻게"}) — 카드에 전/후 그림이 뜬다. 카드가 엉뚱한 청크에 붙어 있으면 part 로 옮긴다.
+  사람에게 카드마다 전/후를 말로 짧게 + "팝업 카드 그림 보고 괜찮으면 말해 주세요". 사람이 괜찮다고 하면 __eyeApply(카드번호). 메모가 없거나 뜻이 애매하면 고치지 말고 묻는다.`;
 window.__eyeGuide = () => EYE_GUIDE;
 window.__eyeOpen = ({ from = 1, to = 999 } = {}) => {
   const s = (window.__kitCfg || {}).sel || {};
@@ -2854,7 +2861,7 @@ window.__eyeOpen = ({ from = 1, to = 999 } = {}) => {
       S.msgs = msgs; S.where = window.__where(msgs); S.wmm = window.__eyeWmm(msgs);
       S.msg = "조판 규칙 대조"; eyeBar(); await sleep(30); eyeRuleScan();
       for (const it of S.items) {
-        it.where = S.where[it.index] || it.where || "";
+        { const m0 = msgs.find((x) => x.index === it.index); it.where = (m0 && eyeName(m0)) || it.where || ""; }
         const m = msgs.find((x) => x.index === it.index);
         if (it.applied && !(m && (m.latex || "").includes(it.applied.to))) { it.applied = null; it.verdict = ""; it.err = "전에 적용했지만 지금 문서엔 없음(저장 전에 닫혔나?) — 다시 적용"; }
       }
@@ -2909,26 +2916,53 @@ window.__eyePage = (n, zoom) => { const S = window.__eyeS; if (!S || !S.pages) r
   const p = S.pages[S.cur]; return p ? `${S.cur + 1} / ${S.pages.length}쪽 · 상자 ${p.boxes.length}개 · 번호 ${eyeNos(p).join(" ")}` : "이 쪽 그림이 아직 없음"; };
 window.__eyeTo = (k) => { const v = document.getElementById("__eyeView"); if (!v) return 0;
   v.scrollTop = k === 1 ? 0 : k === 2 ? (v.scrollHeight - v.clientHeight) / 2 : k === 3 ? v.scrollHeight : k; return Math.round(v.scrollTop); };
-window.__eyeLatex = (no, part) => { const m = eyeFind({ no, part }); return m ? window.__show(`${window.__eyeS.where[m.index]}\n${m.latex}`) : "그 번호 없음"; };
+window.__eyeLatex = (no, part) => { const m = eyeFind({ no, part }); return m ? window.__show(`${eyeName(m)}\n${m.latex}`) : "그 번호 없음"; };
 window.__eyeAdd = (o) => {
   const S = window.__eyeS; if (!S || !S.msgs) return "먼저 __eyeOpen()";
   const m = eyeFind(o); if (!m) return `번호 ${o.no} 를 못 찾음`;
   if (o.from && !(m.latex || "").includes(o.from)) return `${S.where[m.index]} 에 그 글(from)이 없음 — __eyeLatex("${o.no}") 로 원문 확인`;
   if (o.from && m.latex.split(o.from).length > 2) return `${S.where[m.index]} 에 그 글(from)이 여러 곳 — 앞뒤 글을 더 붙여 한 곳만 맞게`;
-  const it = { id: S.next++, index: m.index, where: S.where[m.index] || "", src: o.src || "AI", what: o.what || "", fix: o.fix || "", from: o.from || "", to: o.to || "",
+  const it = { id: S.next++, index: m.index, where: eyeName(m), src: o.src || "AI", what: o.what || "", fix: o.fix || "", from: o.from || "", to: o.to || "",
     conf: o.conf || "중간", kind: o.kind || "새 꼴", verdict: "", memo: "" };
   const c = (S.chk || {})[m.index] || [], f = (S.fixTo || {})[m.index];
   it.ruleSnap = { ids: [...new Set([...c.map((x) => x.rule), ...(f ? f.rules : [])])], whats: c.map((x) => x.what), fixable: !!f };
   S.items.push(it); eyeSave(); eyeCards(); eyeShow();
-  return `#${it.id} ${it.where} 올림`;
+  const same = o.part ? [] : eyeSameNo(it);
+  return `#${it.id} ${it.where} 올림` + (same.length > 1 ? ` — 이 번호 청크 ${same.length}개(${same.map((x) => eyeName(x)).join(" / ")}). 다른 자리를 본 거면 __eyeDel(${it.id}) 후 part 로 다시` : "");
 };
 window.__eyeDel = (id) => { const S = window.__eyeS, k = (S.items || []).findIndex((x) => x.id === id);
   if (k < 0) return "카드 없음"; if (S.items[k].applied) return "적용한 카드 — 먼저 되돌리기"; S.items.splice(k, 1); eyeSave(); eyeCards(); eyeShow(); return `#${id} 지움`; };
+const eyeNo = (it) => ((it.where || "").match(/\d{4}/) || [])[0] || "";
+const eyeSameNo = (it) => { const S = window.__eyeS, no = eyeNo(it), W = (m) => S.where[m.index] || "";
+  if (no) return S.msgs.filter((m) => m.latex && W(m).includes(" " + no));
+  const head = (it.where || "").split(" · ")[0]; return S.msgs.filter((m) => m.latex && W(m).startsWith(head)); };
+window.__eyeTodo = () => { const S = window.__eyeS; if (!S || !S.items) return "먼저 __eyeOpen()";
+  const L = S.items.filter((x) => x.verdict === "고쳐줘" && !x.applied);
+  if (!L.length) return "고쳐줘 카드 없음";
+  return window.__show(L.map((x) => [`#${x.id} ${x.where} · ${x.what}` + (x.fix ? ` → ${x.fix}` : "") + (x.memo ? `\n  메모: ${x.memo}` : "\n  메모 없음 — 사람에게 어떻게 고칠지 묻기"),
+    ...eyeSameNo(x).map((m) => `  [${eyeName(m)}]${m.index === x.index ? " ← 지금 카드가 붙은 청크" : ""}\n${m.latex}`)].join("\n")).join("\n\n"), 12000); };
+window.__eyePlan = async (id, { part, from, to, fix } = {}) => {
+  const S = window.__eyeS, it = (S.items || []).find((x) => x.id === id); if (!it) return "카드 없음";
+  if (it.applied) return "이미 반영한 카드 — 먼저 되돌리기";
+  const m = part ? eyeSameNo(it).find((x) => eyeName(x).includes(part)) : eyeMsg(it);
+  if (!m || !m.latex) return `${eyeNo(it) || it.where} 에서 '${part}' 청크를 못 찾음 — __eyeTodo() 의 [ ] 이름 조각으로`;
+  if (!from || !to || from === to) return "from·to 를 주세요(from = 그 청크에 한 곳만 있는 원문 조각)";
+  const n = m.latex.split(from).length - 1;
+  if (n !== 1) return `${S.where[m.index]} 에 그 글(from)이 ${n ? "여러 곳" : "없음"} — 앞뒤 글을 붙여 한 곳만 맞게`;
+  const t = await window.__eyeTry(S.msgs, m.index, from, to);
+  Object.assign(it, { index: m.index, where: eyeName(m) || it.where, from, to, fix: fix || it.fix, plan: true, err: t.block ? "이 안대로 하면 막힘 — " + t.block : "",
+    _ba: null, _baK: null, _lineK: null, line: [] });
+  const c = (S.chk || {})[m.index] || [], f = (S.fixTo || {})[m.index];
+  it.ruleSnap = { ids: [...new Set([...c.map((x) => x.rule), ...(f ? f.rules : [])])], whats: c.map((x) => x.what), fixable: !!f };
+  S.open = id; S.mode[id] = "ai"; const k = eyePageOf(m.index); if (k >= 0) S.cur = k; S.goSel = true;
+  eyeSave(); eyeShow(); eyeCards();
+  return t.block ? `#${id} 안 올렸지만 막힘: ${t.block} — 다른 안으로` : `#${id} ${it.where} 에 고칠 안 올림 — 사람에게 "팝업 카드의 전/후 그림 보고 괜찮으면 말해 주세요"`;
+};
 window.__eyeList = () => { const S = window.__eyeS; if (!S || !S.items) return "없음";
   return window.__show(S.items.map((x) => `#${x.id} ${x.where} · ${x.what} · ${x.src === "규칙" ? "자동 검사" : "AI·" + x.conf} · ${x.verdict || "판정 전"}`).join("\n"), 8000); };
 window.__eyeText = () => { const S = window.__eyeS; if (!S || !S.items) return "";
   const n = S.items.filter((x) => x.verdict === "반영 완료").length;
-  return [`눈검수 결과 · 찾은 것 ${S.items.length} · 반영 ${n}`, ...S.items.map((x) => `- ${x.where} · ${x.what}` + (x.fix ? ` → ${x.fix}` : "")
+  return [`눈검수 결과 · 찾은 것 ${S.items.length} · 반영 ${n}`, ...S.items.map((x) => `- #${x.id} ${x.where} · ${x.what}` + (x.fix ? ` → ${x.fix}` : "")
     + ` · [${x.verdict || "판정 전"}]` + (x.memo ? ` 메모: ${x.memo}` : "") + (x.applied ? ` 적용: ${x.applied.how || (x.applied.mine ? "직접" : "추천대로")}` : "") + ` (${x.src === "규칙" ? "자동 검사" : "AI 눈검사·확신 " + x.conf})`)].join("\n"); };
 window.__eyeCopy = async () => { const t = window.__eyeText(); try { await navigator.clipboard.writeText(t); return "복사함"; } catch (e) { return t; } };
 const eyeNos = (p) => [...new Set(p.boxes.map((b) => ((window.__eyeS.where[b.index] || "").match(/\d{4}/) || [])[0]).filter(Boolean))];
@@ -2989,7 +3023,7 @@ window.__eyeApply = async (id, { mine, whole, how } = {}) => {
   const h = await window.__paneReplace(from, to);
   const after = (await window.__K.exportRendered()).messages.find((x) => x.index === it.index);
   if (!after || !after.latex.includes(to) || after.latex === cur) { it.err = "반영 안 됨: " + h; eyeCards(); return it.err; }
-  how = how || (whole != null || mine != null ? "직접" : "추천대로");
+  how = how || (whole != null || mine != null ? "직접" : it.plan ? "고쳐줘 처리" : "추천대로");
   it.applied = { from, to, how, mine: how !== "추천대로", at: new Date().toISOString() }; it.verdict = "반영 완료"; it.err = ""; it.outside = false;
   (S.log = S.log || []).push({ act: "적용", id, where: it.where, index: it.index, how, from, to, at: it.applied.at });
   if (how === "직접") delete S.mine[id];
@@ -3104,7 +3138,10 @@ const EYE_CSS = `#__eyePop{--bg:#eef1f4;--panel:#fff;--ink:#1d2733;--mute:#5d6b7
 #__eyePop .chip.out{color:var(--b);border-color:var(--b);font-weight:700}
 #__eyePop .rulebox{border:1px solid var(--line);border-radius:4px;padding:8px 10px;display:grid;gap:6px;background:var(--panel)}
 #__eyePop .rulebox .lab{font-size:11.5px;font-weight:700;color:var(--mute)} #__eyePop .rulebox ul{margin:0;padding-left:18px;font-size:13px}
-#__eyePop .rulebox.none{border-color:var(--b);background:var(--mark-b)} #__eyePop .memo-top textarea{border-color:var(--b);min-height:70px}`;
+#__eyePop .rulebox.none{border-color:var(--b);background:var(--mark-b)} #__eyePop .memo-top textarea{border-color:var(--b);min-height:70px}
+#__eyePop .next{padding:6px 14px;background:var(--soft);border-bottom:1px solid var(--line);font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap} #__eyePop .next b{color:var(--accent)}
+#__eyePop .hlp{padding:8px 14px 10px;background:var(--panel);border-bottom:1px solid var(--line);font-size:13px} #__eyePop .hlp ol{margin:6px 0;padding-left:20px;display:grid;gap:3px}
+#__eyePop .rulebox.ok{border-color:var(--ok);background:var(--add)} #__eyePop .todo{color:var(--accent)} #__eyePop .chip.plan{color:var(--accent);border-color:var(--accent);font-weight:700}`;
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const eyeK = (it) => EYE_KIND[it.kind] || "B";
 const eyeStCls = (it) => it.verdict === "반영 완료" ? "done" : ((EYE_ST.find((s) => s[0] === it.verdict) || [])[1] || "new");
@@ -3122,6 +3159,7 @@ const eyeDiff = (a, b) => {
 const eyeMsg = (it) => ((window.__eyeS.msgs || []).find((x) => x.index === it.index) || {});
 function eyeUI() {
   let ov = document.getElementById("__eyePop");
+  if (ov && !ov.querySelector("#__eyeNext")) { ov.remove(); ov = null; document.getElementById("__eyeCss")?.remove(); }
   if (ov) { ov.style.display = "flex"; return ov; }
   if (!document.getElementById("__eyeCss")) { const st = document.createElement("style"); st.id = "__eyeCss"; st.textContent = EYE_CSS; document.head.appendChild(st); }
   ov = document.createElement("div"); ov.id = "__eyePop";
@@ -3130,7 +3168,16 @@ function eyeUI() {
   <button class="btn ghost" data-a="redo" type="button" title="문서를 다시 읽고 쪽 그림을 전부 새로 뽑음 · 자동 검사도 다시(찾은 것·판정·메모는 남음, AI 가 다시 보는 건 아님)">쪽 그림 새로 뽑기</button>
   <button class="btn ghost" data-a="rec" type="button" title="켰을 때·지금 JSON(그림 뺀 LaTeX 판) + 찾은 것·판정·메모·적용 기록을 파일 하나로 내려받기 — 관리자에게 전달">관리자용 기록 저장</button>
   <button class="btn" data-a="copy" type="button" title="찾은 것 · 판정 · 메모를 글로 복사 — 메신저나 AI 대화에 붙여 넣기">결과 글로 복사</button>
+  <button class="btn ghost" data-a="help" type="button" title="눈검수 순서 · AI 에게 할 말">? 사용법</button>
   <button class="x" data-a="close" type="button" title="닫기 — 찾은 것·판정은 남음(오른쪽 아래 [👁 눈검수]로 다시 열기)">✕</button></div>
+<div id="__eyeNext" class="next"></div>
+<div id="__eyeHelp" class="hlp" hidden><b>눈검수 순서</b> — 크롬 AI 대화창에 할 말은 "따옴표"
+<ol><li>크롬 AI 에게 <b>"눈검수 해줘"</b> → 쪽 그림을 보고 이상한 곳을 오른쪽 카드로 올림</li>
+<li>카드를 눌러 전/후 그림 보고 판정 — <b>[조판 규칙대로 고치기]·[이대로 적용]</b>(바로 고침) · <b>현재 맞음</b>(지금이 맞음) · <b>고쳐줘</b>(어떻게 고칠지 메모) · <b>보류</b>(모르겠음, 메모)</li>
+<li>고쳐줘가 있으면 AI 에게 <b>"고쳐줘 처리해"</b> → 메모대로 고칠 안이 카드에 'AI 고칠 안'으로 뜸</li>
+<li>전/후 그림이 괜찮으면 카드의 [이대로 적용] 또는 AI 에게 <b>"괜찮아, 적용해"</b> · 아니면 메모를 고쳐 다시 "고쳐줘 처리해"</li>
+<li>다 끝나면 💾 저장 → [관리자용 기록 저장] → 내려받은 파일을 관리자에게(작업 스레드에 올리기)</li></ol>
+<span class="note">적용은 Ctrl+Z 로 되돌릴 수 있어요 · ✕ 로 닫아도 카드는 남아요 · 화면에서 직접 고친 뒤 [👁 눈검수]를 다시 누르면 바뀐 쪽만 새로 뽑아요</span></div>
 <div class="main"><div class="mid"><div class="midtop"><div class="pages" id="__eyePages"></div><span class="sp"></span>
   <div class="zoom"><button data-z="-1" type="button" title="축소">−</button><span class="z" id="__eyeZ"></span><button data-z="1" type="button" title="확대">+</button>
   <button data-z="w" type="button" title="쪽 폭에 맞춤 — 글이 또렷">폭 맞춤</button><button data-z="h" type="button" title="쪽 전체">쪽 전체</button><span>Ctrl+휠</span></div></div>
@@ -3151,14 +3198,25 @@ function eyeUI() {
   return ov;
 }
 function eyeBar() {
-  const S = window.__eyeS; if (!document.getElementById("__eyePop")) return;
-  const N = (S.items || []).length, n = (S.items || []).filter((x) => x.verdict === "반영 완료" || x.verdict === "현재 맞음").length;
+  const S = window.__eyeS, pop = document.getElementById("__eyePop"); if (!pop) return;
+  if (!pop.querySelector("#__eyeNext")) eyeUI();
+  const L = S.items || [], N = L.length, c = (v) => L.filter((x) => x.verdict === v).length;
+  const j = L.filter((x) => x.verdict).length, n = c("반영 완료") + c("현재 맞음"), fx = c("고쳐줘"), hold = c("보류");
   document.getElementById("__eyeMsg").textContent = S.busy ? "⏳ " + S.msg : S.msg || "";
   const bz = document.getElementById("__eyeBusy");
   if (bz) { bz.classList.toggle("on", !!S.busy); document.getElementById("__eyeBusyMsg").textContent = S.msg || "";
     document.getElementById("__eyeBusyBar").style.width = S.prog ? (S.prog[0] / S.prog[1] * 100) + "%" : "8%"; }
   document.getElementById("__eyeFile").textContent = S.where ? `${(S.msgs.find((m) => m.type === "meta") || {}).part || ""} · ${S.pages ? S.pages.length : 0}쪽` : "";
-  document.getElementById("__eyeCnt").innerHTML = N ? `<span class="prog"><i style="width:${n / N * 100}%"></i></span> 해결 ${n} / ${N}` : "";
+  document.getElementById("__eyeCnt").innerHTML = N ? `<span class="prog"><i style="width:${j / N * 100}%"></i></span> 판정 ${j} / ${N} · 끝남 ${n}`
+    + (fx ? ` · <b class="todo">고쳐줘 ${fx}</b>` : "") + (hold ? ` · 보류 ${hold}` : "") : "";
+  const plan = L.filter((x) => x.plan && !x.applied && x.verdict === "고쳐줘").length;
+  const [msg, say] = S.busy ? ["쪽 그림을 뽑는 중 — 끝날 때까지 기다리기", ""]
+    : !N ? ["① 크롬 AI 에게 \"눈검수 해줘\"라고 말하기 — 이상한 곳을 찾아 오른쪽 카드로 올려요", "눈검수 해줘"]
+    : j < N ? [`② 카드를 하나씩 눌러 전/후 그림을 보고 판정하기 — 남은 카드 ${N - j}개 (적용 · 현재 맞음 · 고쳐줘 + 메모 · 보류)`, ""]
+    : plan ? [`④ AI 가 고칠 안을 올렸어요(파란 'AI 고칠 안' 카드 ${plan}개) — 전/후 그림을 보고 [이대로 적용]을 누르거나 AI 에게 "괜찮아, 적용해"`, "괜찮아, 적용해"]
+    : fx ? [`③ 고쳐줘 ${fx}개 — 크롬 AI 에게 "고쳐줘 처리해"라고 말하기(메모대로 고칠 안을 카드에 올려요)`, "고쳐줘 처리해"]
+    : [`⑤ 다 했어요 — 💾 저장 후 [관리자용 기록 저장] → 내려받은 파일을 관리자에게(작업 스레드에 올리기)${hold ? ` (보류 ${hold}개는 메모와 함께 관리자에게 넘어가요)` : ""}`, ""];
+  document.getElementById("__eyeNext").innerHTML = `<b>지금 할 일</b> ${esc(msg)}${say ? ` <button class="s" type="button" data-a="say" data-say="${esc(say)}" title="크롬 AI 대화창에 붙여 넣을 말 복사">"${esc(say)}" 복사</button>` : ""}`;
   const has = new Set((S.items || []).map((x) => eyePageOf(x.index)));
   document.getElementById("__eyePages").innerHTML = (S.pages || []).map((p, i) => `<span data-page="${i}" class="${i === S.cur ? "on " : ""}${has.has(i) ? "has " : ""}${p ? "" : "wait"}">${i + 1}</span>`).join("");
 }
@@ -3193,9 +3251,16 @@ const eyeRuleOf = (it) => {
   const S = window.__eyeS;
   return { chk: (S.chk || {})[it.index] || [], line: it.line || [], fix: it.applied ? null : (S.fixTo || {})[it.index] || null };
 };
+const EYE_OK = [{ re: /\(단,/, rule: { A: "CW26", B: "GW24" }, kind: "(단,)", text: "(단, …) 은 앞 줄에 들어가면 붙이고, 넘칠 때만 다음 줄 오른쪽 끝으로" }];
+const eyeOkRule = (it, lx) => {
+  const k = window.__K.key(window.__eyeS.msgs || []);
+  if (it._lineK == null || it._lineK !== (lx || "").length + ":" + (eyeMsg(it).pdf || "").length) return null;
+  const r = EYE_OK.find((o) => o.rule[k] && o.re.test(lx) && (o.re.test(it.what) || o.re.test(it.from || "")) && !(it.line || []).some((l) => l.kind === o.kind));
+  return r ? { rule: r.rule[k], text: r.text } : null;
+};
 function eyeCard(it) {
   const S = window.__eyeS, on = S.open === it.id, st = eyeStCls(it), m = eyeMsg(it), lx = m.latex || "";
-  const head = `<div class="hd" data-id="${it.id}"><div class="top">${st === "done" ? '<span class="tick">✓</span>' : `<span class="num">${it.id}</span>`}<span class="pill ${eyeK(it)}">${esc(it.kind)}</span><span class="where">${esc(it.where)}</span>${eyeWho(it)}${it.verdict ? `<span class="chip s-${st}">${esc(it.verdict)}</span>` : ""}${it.outside ? '<span class="chip out">밖에서 고쳐짐</span>' : ""}</div><div class="what">${esc(it.what)}</div></div>`;
+  const head = `<div class="hd" data-id="${it.id}"><div class="top">${st === "done" ? '<span class="tick">✓</span>' : `<span class="num">${it.id}</span>`}<span class="pill ${eyeK(it)}">${esc(it.kind)}</span><span class="where">${esc(it.where)}</span>${eyeWho(it)}${it.verdict ? `<span class="chip s-${st}">${esc(it.verdict)}</span>` : ""}${it.outside ? '<span class="chip out">밖에서 고쳐짐</span>' : ""}${it.plan && !it.applied ? '<span class="chip plan">AI 고칠 안</span>' : ""}</div><div class="what">${esc(it.what)}</div></div>`;
   if (!on) return `<div class="card${st === "done" ? " done" : ""}">${head}</div>`;
   const R = eyeRuleOf(it), has = R.chk.length || R.line.length, big = R.fix ? "rule" : it.to && !it.applied ? "ai" : "mine";
   const key = it.applied ? it.applied.to : it.from, at = key && key.length < 400 && !(it.applied && it.applied.how && it.applied.how !== "추천대로") ? lx.indexOf(key) : -1;
@@ -3206,6 +3271,7 @@ function eyeCard(it) {
         <details><summary class="note">바뀌는 LaTeX</summary><div class="code diff">${eyeDiff(lx, R.fix.latex)}</div></details>
         <div class="tools"><button class="btn" type="button" data-apply="rule" data-id="${it.id}" title="${esc(R.fix.rules.join(" "))}">조판 규칙대로 고치기</button></div>`
         : `<div class="note">${R.line.length ? "그려서 재는 고침이라 여기선 못 고쳐요 — AI 에게 \"알아서 고쳐줘\" 또는 아래에서 직접" : "바로 고칠 방법이 없는 꼴 — 아래에서 직접 고치거나 고쳐줘 + 메모"}</div>`}</div>`
+    : eyeOkRule(it, lx) ? `<div class="rulebox ok"><div class="lab">조판 규칙</div><div title="${esc(eyeOkRule(it, lx).rule)}">조판 규칙대로임 — ${esc(eyeOkRule(it, lx).text)}</div></div>`
     : `<div class="rulebox none"><div class="lab">조판 규칙</div><div>조판 규칙에 아직 없음 — 어떻게 고치면 되는지 메모를 남겨 주세요</div></div>`;
   const mode = S.mode[it.id] || (big === "mine" || !it.to ? "mine" : "ai");
   let ba = "";
@@ -3226,7 +3292,7 @@ function eyeCard(it) {
         <div class="tools"><button class="${big === "mine" ? "btn" : "s go"}" type="button" data-apply="mine" data-id="${it.id}"${bad.length || same ? " disabled" : ""}>고친 대로 적용</button><button class="s go" type="button" data-apply="mine-next" data-id="${it.id}"${bad.length || same ? " disabled" : ""}>적용하고 다음</button><button class="s" type="button" data-reset="${it.id}">원래대로</button></div>`;
     }
   }
-  const noRule = !it.applied && !has && !R.fix;
+  const noRule = !it.applied && !has && !R.fix && !eyeOkRule(it, lx);
   return `<div class="card on${st === "done" ? " done" : ""}">${head}<div class="body">
     <div class="problem ${eyeK(it)}"><div><div class="lab">무엇이 문제인가</div><div class="q">${esc(it.what)}</div></div>
       ${it.fix ? `<div><div class="lab">고칠 방법 ${eyeWho(it)}</div><div class="fx">${esc(it.fix)}</div></div>` : ""}</div>
@@ -3252,6 +3318,8 @@ async function eyeClick(e) {
   if (t.classList.contains("hd") && String(window.getSelection()).trim()) return;
   const d = t.dataset, a = d.a, id = +(d.id || d.undo || d.full || d.ba || d.goto || d.reset || 0), it = S.items.find((x) => x.id === id);
   if (a === "close") { document.getElementById("__eyePop").style.display = "none"; return; }
+  if (a === "help") { const h = document.getElementById("__eyeHelp"); h.hidden = !h.hidden; return; }
+  if (a === "say") { try { await navigator.clipboard.writeText(d.say); eyeToast(`"${d.say}" 복사함 — 크롬 AI 대화창에 붙여 넣기`); } catch (err) { eyeToast(`복사가 막혀 있음 — 직접 "${d.say}" 라고 쓰기`); } return; }
   if (a === "rec") { eyeToast("기록 묶는 중…"); eyeToast("내려받음: " + await window.__eyeRecord()); return; }
   if (a === "copy") { eyeToast(await window.__eyeCopy() === "복사함" ? "결과 글 복사함" : "복사가 막혀 있음 — __eyeText() 결과를 쓰기"); return; }
   if (a === "redo") { S.pages = null; S.key = null; window.__eyeOpen(); return; }
@@ -3322,7 +3390,7 @@ async function eyeBA(it) {
     await it._baP;
   }
   const k0 = it._lineK, ln = await eyeLine(it);
-  if (k0 !== it._lineK && ln.length && S.open === it.id) { eyeCards(); return; }
+  if (k0 !== it._lineK && S.open === it.id && (ln.length || eyeOkRule(it, eyeMsg(it).latex))) { eyeCards(); return; }
   const card = document.querySelector("#__eyeCards .card.on"); if (!card || S.open !== it.id) return;
   const put = (sel, png) => { const im = card.querySelector(`img[data-b="${sel}"]`); if (im && png) im.src = png; };
   put("before", it.beforePng); put("after", it.afterPng);
