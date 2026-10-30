@@ -1,5 +1,5 @@
-// page-kit v2026.10.30-1855
-window.__kitBuilt = "v2026.10.30-1855";
+// page-kit v2026.10.30-1900
+window.__kitBuilt = "v2026.10.30-1900";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -2820,8 +2820,8 @@ const EYE_GUIDE = `눈검수 — 쪽 그림을 책 보듯 보고, 자동 도구�
 볼 것: 1 띄어쓰기 벌어짐(수식 뒤 조사 앞 틈 등) 2 줄 시작 자리 어긋남(접힌 줄이 맨 왼쪽) 3 겹침·잘림·칸 밖 4 깨진 표시(명령어 글자·빈 네모·이상한 기호·분수 깨짐)
   5 튀는 글자(크기·굵기·장평) 6 수식 묶음 모양(= 세로줄·꼬리 오른쪽 끝) 7 선지·보기 배열 8 표·그림 9 줄이 . , ) ? 로 시작 10 같은 꼴 다른 처리 11 간격 12 그 밖에 조판하는 사람이 고칠 곳
 안 볼 것: 어절이 줄 끝에서 쪼개짐 · 배치(빈 곳·문제가 다음 단/쪽으로) · 한 글자만 다음 줄 · 쪽 머리·꼬리표·아이콘·디자인 요소(유형 박스 제목 넘침 포함)
-  · 묶음 머리(여러 문제 위 공통 발문) 첫 줄 들여쓰기 — 공통지문 번호가 들어갈 자리라 지금 꼴이 맞음 · (단, …) 이 앞 글에 붙어 있음 — 들어가면 붙이는 게 규칙(넘쳐서 쪼개질 때만 다음 줄 오른쪽 끝)
-  · 조립제법·나눗셈 표의 빈 네모(테두리 안 빈칸) — 원래 꼴
+규칙대로인 꼴(올리지 않음): 묶음 머리(여러 문제 위 공통 발문) 첫 줄 들여쓰기 22mm — 공통지문 번호 자리, 넘쳐도 그대로 · (단, …) 이 앞 글에 붙음 — 들어가면 붙이고 쪼개질 때만 다음 줄 오른쪽 끝
+  · 조립제법 나머지 칸의 테두리 안 빈 네모 — 원래 꼴
 올리기: __eyeAdd({no:"0091", part:"풀이", what:"보이는 그대로 짧게", fix:"이렇게 고치면 됨", from:"원문 LaTeX 조각", to:"고친 조각", conf:"높음|중간|낮음", kind:"깨짐|새 꼴|간격"})
   no = 상자 위 4자리 화면 번호. 한 번호에 청크가 여럿(발문·그림·선지·표…)이니 본 자리를 part 로 꼭 준다(part:"선지") — 안 주면 첫 청크(발문)에 붙는다. 번호 없는 자리(유형 박스·개념)는 no 없이 part:"유형 12 박스". from 은 그 칸에 한 곳만 있게 앞뒤 글을 붙인다. from/to 를 모르면 빼도 된다(원문은 카드의 [전체 LaTeX] 로 사람이 본다). 원문 확인은 __eyeLatex("0091") .
   확실하지 않으면 '낮음'으로라도 올린다(사람이 고른다). 같은 꼴이 여러 번이면 전부.
@@ -3251,11 +3251,14 @@ const eyeRuleOf = (it) => {
   const S = window.__eyeS;
   return { chk: (S.chk || {})[it.index] || [], line: it.line || [], fix: it.applied ? null : (S.fixTo || {})[it.index] || null };
 };
-const EYE_OK = [{ re: /\(단,/, rule: { A: "CW26", B: "GW24" }, kind: "(단,)", text: "(단, …) 은 앞 줄에 들어가면 붙이고, 넘칠 때만 다음 줄 오른쪽 끝으로" }];
+const EYE_OK = [
+  { re: /\(단,/, on: (it) => /\(단,/.test(it.what + (it.from || "")), rule: { A: "CW26", B: "GW24" }, kind: "(단,)", text: "(단, …) 은 앞 줄에 들어가면 붙이고, 넘칠 때만 다음 줄 오른쪽 끝으로" },
+  { re: /\\begin\{hangblock\}\[22mm\]\{0mm\}/, on: (it, m) => m.type === "questionTitle", rule: { B: "GW38" }, text: "묶음 머리 첫 줄 들여쓰기 22mm 는 공통지문 번호 자리 — 넘쳐도 그대로" },
+  { re: /\\rembox\{\\sqboxnat/, on: (it, m) => m.type === "table" && /빈|네모|두 겹|겹/.test(it.what), rule: { B: "GW27" }, text: "조립제법 나머지 빈칸은 테두리 안 빈 네모가 원래 꼴" }];
 const eyeOkRule = (it, lx) => {
-  const k = window.__K.key(window.__eyeS.msgs || []);
-  if (it._lineK == null || it._lineK !== (lx || "").length + ":" + (eyeMsg(it).pdf || "").length) return null;
-  const r = EYE_OK.find((o) => o.rule[k] && o.re.test(lx) && (o.re.test(it.what) || o.re.test(it.from || "")) && !(it.line || []).some((l) => l.kind === o.kind));
+  const k = window.__K.key(window.__eyeS.msgs || []), m = eyeMsg(it);
+  const measured = it._lineK != null && it._lineK === (lx || "").length + ":" + (m.pdf || "").length;
+  const r = EYE_OK.find((o) => o.rule[k] && o.re.test(lx || "") && o.on(it, m) && (!o.kind || (measured && !(it.line || []).some((l) => l.kind === o.kind))));
   return r ? { rule: r.rule[k], text: r.text } : null;
 };
 function eyeCard(it) {
