@@ -1,5 +1,5 @@
-// page-kit v2026.10.30-1733
-window.__kitBuilt = "v2026.10.30-1733";
+// page-kit v2026.10.30-1816
+window.__kitBuilt = "v2026.10.30-1816";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -2763,8 +2763,9 @@ const eyeKey = (msgs) => {
   let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return `eye:${m.part || ""}:${msgs.length}:${(h >>> 0).toString(36)}`;
 };
+const eyeBare = (it) => Object.fromEntries(Object.entries(it).filter(([k]) => !k.startsWith("_") && !k.endsWith("Png")));
 const eyeSave = () => { const S = window.__eyeS; if (!S) return;
-  try { localStorage.setItem(S.key, JSON.stringify(S.items.map(({ beforePng, afterPng, _baP, ...x }) => x))); localStorage.setItem(S.key + ":log", JSON.stringify(S.log || [])); } catch (e) {  } };
+  try { localStorage.setItem(S.key, JSON.stringify(S.items.map(eyeBare))); localStorage.setItem(S.key + ":log", JSON.stringify(S.log || [])); } catch (e) {  } };
 const eyeLoad = (key) => { try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch (e) { return []; } };
 const EYE_DROP = ["pdf", "svg", "hash", "segments", "blockPositions", "paragraphBreaks", "bacenters", "renderStatus", "renderWarnings", "height", "inlineImages", "imageData"];
 const eyeLean = (msgs) => msgs.map((m) => { const o = { ...m }; for (const k of EYE_DROP) delete o[k];
@@ -2781,11 +2782,22 @@ window.__eyeRecordName = (msgs) => {
   const d = new Date(), p2 = (n) => String(n).padStart(2, "0");
   return `눈검수기록_전달용_${k ? (k === "A" ? K.nA : K.nB) : "업체모름"}_${part}_${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}.json`;
 };
+async function eyeRecItems() {
+  const S = window.__eyeS, out = [];
+  for (const it of S.items) {
+    await eyeLine(it);
+    const snap = it.ruleSnap || { ids: [], whats: [], fixable: false }, line = it.line || [], how = it.applied && it.applied.how;
+    out.push({ ...eyeBare(it), found_by: it.src === "규칙" ? "tool" : "ai", confidence: it.src === "규칙" ? "확실" : it.conf,
+      rule_ids: snap.ids, rule_whats: snap.whats, line,
+      fix_kind: snap.fixable || how === "조판 규칙대로" ? "rule" : it.to ? "suggested" : "none", new_rule_candidate: !snap.ids.length && !line.length });
+  }
+  return out;
+}
 window.__eyeRecord = async ({ download = true } = {}) => {
   const S = window.__eyeS; if (!S || !S.key) return "먼저 눈검수를 열기";
   const now = (await window.__K.exportRendered()).messages, name = window.__eyeRecordName(now);
   const rec = { kind: "눈검수기록", tool: (window.__kitCfg || {}).ver || "", at: new Date().toISOString(), name,
-    summary: window.__eyeText(), items: S.items.map(({ beforePng, afterPng, _baP, _ba, _baK, ...x }) => x), log: S.log || [],
+    summary: window.__eyeText(), items: await eyeRecItems(), log: S.log || [],
     start: S.start || null, end: eyeLean(now) };
   const txt = JSON.stringify(rec);
   if (download) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "application/json" })); a.download = name;
@@ -2810,6 +2822,7 @@ const EYE_GUIDE = `눈검수 — 쪽 그림을 책 보듯 보고, 자동 도구�
   no = 상자 위 4자리 화면 번호. 번호 없는 자리(유형 박스·개념)는 no 없이 part:"유형 12 박스". from 은 그 칸에 한 곳만 있게 앞뒤 글을 붙인다. from/to 를 모르면 빼도 된다(원문은 카드의 [전체 LaTeX] 로 사람이 본다). 원문 확인은 __eyeLatex("0091") .
   확실하지 않으면 '낮음'으로라도 올린다(사람이 고른다). 같은 꼴이 여러 번이면 전부.
 잘못 올렸으면 __eyeDel(번호).
+카드마다 그 청크의 조판 규칙 검사(LaTeX 꼴 · 그려서 줄 검사)는 도구가 붙인다 — 따로 __check 를 돌릴 필요 없음. 자동 검사(분수 깨짐 등)도 열 때 도구가 올린다.
 끝나면: __eyeList() 로 올린 것 확인 · 사람에게 "팝업 카드에서 판정·적용하세요"라고 알린다. 적용·[관리자용 기록 저장]은 사람이 누른다.`;
 window.__eyeGuide = () => EYE_GUIDE;
 window.__eyeOpen = ({ from = 1, to = 999 } = {}) => {
@@ -2832,13 +2845,14 @@ window.__eyeOpen = ({ from = 1, to = 999 } = {}) => {
       }
       const msgs = (await window.__K.exportRendered()).messages, key = eyeKey(msgs);
       if (S.key !== key) {
-        S.key = key; S.items = eyeLoad(key); S.cur = 0; S.zoom = "폭"; S.open = null;
+        S.key = key; S.items = eyeLoad(key).map((x) => x.verdict === "아님" ? { ...x, verdict: "현재 맞음" } : x); S.cur = 0; S.zoom = "폭"; S.open = null;
         try { S.log = JSON.parse(localStorage.getItem(key + ":log") || "[]"); } catch (e) { S.log = []; }
         S.start = eyeStart(key, msgs);
         S.next = Math.max(0, ...S.items.map((x) => x.id)) + 1;
         for (const r of window.__eyeRules(msgs)) if (!S.items.some((x) => x.index === r.index && x.from === r.from)) S.items.push({ ...r, id: S.next++, verdict: "", memo: "" });
       }
       S.msgs = msgs; S.where = window.__where(msgs); S.wmm = window.__eyeWmm(msgs);
+      S.msg = "조판 규칙 대조"; eyeBar(); await sleep(30); eyeRuleScan();
       for (const it of S.items) {
         it.where = S.where[it.index] || it.where || "";
         const m = msgs.find((x) => x.index === it.index);
@@ -2847,12 +2861,48 @@ window.__eyeOpen = ({ from = 1, to = 999 } = {}) => {
       const pages = eyePages(), last = Math.min(to, pages.length);
       S.pages = S.pages && S.pages.length === pages.length ? S.pages : new Array(pages.length).fill(null);
       const t0 = Date.now();
-      for (let i = from - 1; i < last; i++) { S.msg = `쪽 그림 ${i + 1} / ${last}`; eyeBar(); S.pages[i] = await eyeShotPage(pages[i]); if (i === S.cur) eyeShow(); }
+      await eyeShots(from - 1, last - 1);
       S.msg = `쪽 ${last - from + 1}장 · ${Math.round((Date.now() - t0) / 1000)}초`;
     } catch (e) { S.msg = "오류: " + e.message; }
-    S.busy = false; eyeSave(); eyeShow(); eyeCards();
+    S.busy = false; S.prog = null; eyeSave(); eyeShow(); eyeCards();
   })();
   return "started — 진행은 __eyeS.msg";
+};
+async function eyeShots(a, b) {
+  const S = window.__eyeS, pages = eyePages();
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+  await sleep(300);
+  for (let i = a; i <= Math.min(b, pages.length - 1); i++) {
+    S.prog = [i - a + 1, b - a + 1]; S.msg = `쪽 그림 ${i + 1} / ${pages.length}`; eyeBar();
+    S.pages[i] = await eyeShotPage(pages[i]); if (i === S.cur) eyeShow();
+  }
+}
+window.__eyeRefresh = () => {
+  const S = window.__eyeS; if (!S || S.busy) return "뽑는 중";
+  S.busy = true; S.prog = null; S.msg = "문서 다시 읽는 중"; eyeUI(); eyeBar();
+  (async () => {
+    let full = false;
+    try {
+      const msgs = (await window.__K.exportRendered()).messages;
+      if (eyeKey(msgs) !== S.key || !eyePages().length || eyePages().length !== (S.pages || []).length) full = true;
+      else {
+        const old = new Map((S.msgs || []).map((m) => [m.index, m.latex]));
+        const changed = msgs.filter((m) => m.latex && old.get(m.index) !== m.latex).map((m) => m.index);
+        S.msgs = msgs; S.where = window.__where(msgs);
+        if (changed.length) {
+          for (const it of S.items) if (changed.includes(it.index)) { it.outside = true; it._ba = it._baK = null; }
+          eyeRuleScan();
+          const first = Math.min(...changed.map(eyePageOf).filter((k) => k >= 0));
+          if (isFinite(first)) await eyeShots(first, S.pages.length - 1);
+          S.msg = `밖에서 바뀐 곳 ${changed.length}개 — 그 쪽부터 다시 뽑음`;
+        } else S.msg = "바뀐 곳 없음";
+      }
+    } catch (e) { S.msg = "오류: " + e.message; }
+    S.busy = false; S.prog = null;
+    if (full) { S.pages = null; window.__eyeOpen(); return; }
+    eyeSave(); eyeShow(); eyeCards();
+  })();
+  return "started";
 };
 window.__eyePage = (n, zoom) => { const S = window.__eyeS; if (!S || !S.pages) return "먼저 __eyeOpen()";
   S.cur = Math.max(0, Math.min(S.pages.length - 1, n - 1)); if (zoom) S.zoom = zoom; eyeUI(); eyeShow(); eyeCards();
@@ -2867,19 +2917,54 @@ window.__eyeAdd = (o) => {
   if (o.from && m.latex.split(o.from).length > 2) return `${S.where[m.index]} 에 그 글(from)이 여러 곳 — 앞뒤 글을 더 붙여 한 곳만 맞게`;
   const it = { id: S.next++, index: m.index, where: S.where[m.index] || "", src: o.src || "AI", what: o.what || "", fix: o.fix || "", from: o.from || "", to: o.to || "",
     conf: o.conf || "중간", kind: o.kind || "새 꼴", verdict: "", memo: "" };
+  const c = (S.chk || {})[m.index] || [], f = (S.fixTo || {})[m.index];
+  it.ruleSnap = { ids: [...new Set([...c.map((x) => x.rule), ...(f ? f.rules : [])])], whats: c.map((x) => x.what), fixable: !!f };
   S.items.push(it); eyeSave(); eyeCards(); eyeShow();
   return `#${it.id} ${it.where} 올림`;
 };
 window.__eyeDel = (id) => { const S = window.__eyeS, k = (S.items || []).findIndex((x) => x.id === id);
   if (k < 0) return "카드 없음"; if (S.items[k].applied) return "적용한 카드 — 먼저 되돌리기"; S.items.splice(k, 1); eyeSave(); eyeCards(); eyeShow(); return `#${id} 지움`; };
 window.__eyeList = () => { const S = window.__eyeS; if (!S || !S.items) return "없음";
-  return window.__show(S.items.map((x) => `#${x.id} ${x.where} · ${x.what} · ${x.src}/${x.conf} · ${x.verdict || "판정 전"}`).join("\n"), 8000); };
+  return window.__show(S.items.map((x) => `#${x.id} ${x.where} · ${x.what} · ${x.src === "규칙" ? "자동 검사" : "AI·" + x.conf} · ${x.verdict || "판정 전"}`).join("\n"), 8000); };
 window.__eyeText = () => { const S = window.__eyeS; if (!S || !S.items) return "";
   const n = S.items.filter((x) => x.verdict === "반영 완료").length;
   return [`눈검수 결과 · 찾은 것 ${S.items.length} · 반영 ${n}`, ...S.items.map((x) => `- ${x.where} · ${x.what}` + (x.fix ? ` → ${x.fix}` : "")
-    + ` · [${x.verdict || "판정 전"}]` + (x.memo ? ` 메모: ${x.memo}` : "") + (x.applied ? ` 적용: ${x.applied.mine ? "내 수정" : "추천대로"}` : "") + ` (${x.src}·${x.conf})`)].join("\n"); };
+    + ` · [${x.verdict || "판정 전"}]` + (x.memo ? ` 메모: ${x.memo}` : "") + (x.applied ? ` 적용: ${x.applied.how || (x.applied.mine ? "직접" : "추천대로")}` : "") + ` (${x.src === "규칙" ? "자동 검사" : "AI 눈검사·확신 " + x.conf})`)].join("\n"); };
 window.__eyeCopy = async () => { const t = window.__eyeText(); try { await navigator.clipboard.writeText(t); return "복사함"; } catch (e) { return t; } };
 const eyeNos = (p) => [...new Set(p.boxes.map((b) => ((window.__eyeS.where[b.index] || "").match(/\d{4}/) || [])[0]).filter(Boolean))];
+const EYE_STRUCT = ["CW15", "GW35"];
+const eyeRuleScan = () => {
+  const S = window.__eyeS, msgs = S.msgs, k = window.__K.key(msgs);
+  S.chk = {}; S.fixTo = {};
+  try { for (const r of window.__check(msgs)) if (r.index != null && r.rule !== "참고" && r.rule !== "-") (S.chk[r.index] = S.chk[r.index] || []).push({ rule: r.rule, what: r.what }); }
+  catch (e) { S.ruleErr = "규칙 검사 멈춤: " + e.message; }
+  try {
+    const work = JSON.parse(JSON.stringify(eyeLean(msgs)));
+    let fixed = work, list = [];
+    if (k === "A") { const r = window.__fixA(work, { apply: true }); fixed = r.msgs; list = r.fix; }
+    else if (k === "B") list = window.__fixB(work, { apply: true }).fix || [];
+    const byI = new Map(fixed.map((m) => [m.index, m]));
+    for (const m of msgs) {
+      const f = byI.get(m.index), rules = [...new Set(list.filter((x) => x.index === m.index).map((x) => x.rule).filter(Boolean))];
+      if (f && f.latex && m.latex && f.latex !== m.latex && !rules.some((r) => EYE_STRUCT.includes(r))) S.fixTo[m.index] = { latex: f.latex, rules };
+    }
+  } catch (e) { S.ruleErr = "규칙 고침 미리보기 멈춤: " + e.message; }
+  for (const it of S.items || []) if (!it.applied) {
+    const c = S.chk[it.index] || [], f = S.fixTo[it.index];
+    it.ruleSnap = { ids: [...new Set([...c.map((x) => x.rule), ...(f ? f.rules : [])])], whats: c.map((x) => x.what), fixable: !!f };
+  }
+};
+async function eyeLine(it) {
+  const S = window.__eyeS, m = eyeMsg(it), key = (m.latex || "").length + ":" + (m.pdf || "").length;
+  if (it._lineK === key) return it.line || [];
+  it._lineK = key; it.line = [];
+  if (!m.pdf || /정답/.test(it.where || "")) return it.line;
+  try {
+    const lib = window.__eyeLib || (window.__eyeLib = await window.__K.pdfjs());
+    it.line = (await window.__lineFind(lib, m, window.__K.key(S.msgs))).map((f) => ({ kind: f[0], line: f[1] + 1, what: f[2] }));
+  } catch (e) { it.line = []; }
+  return it.line;
+}
 async function eyePick(index) {
   const el = eyeBoxEl(index); if (!el) throw new Error("미리보기에 그 상자가 없음");
   el.scrollIntoView({ block: "center" }); await sleep(500);
@@ -2892,7 +2977,7 @@ async function eyePick(index) {
     tgt.dispatchEvent(new (t.startsWith("pointer") ? PointerEvent : MouseEvent)(t, { bubbles: true, cancelable: true, ctrlKey: true, clientX: x, clientY: y, button: 0, buttons: t.endsWith("down") ? 1 : 0 }));
   await sleep(700);
 }
-window.__eyeApply = async (id, { mine, whole } = {}) => {
+window.__eyeApply = async (id, { mine, whole, how } = {}) => {
   const S = window.__eyeS, it = S.items.find((x) => x.id === id); if (!it) return "카드 없음";
   S.msgs = (await window.__K.exportRendered()).messages;
   const cur = (S.msgs.find((x) => x.index === it.index) || {}).latex || "";
@@ -2904,10 +2989,11 @@ window.__eyeApply = async (id, { mine, whole } = {}) => {
   const h = await window.__paneReplace(from, to);
   const after = (await window.__K.exportRendered()).messages.find((x) => x.index === it.index);
   if (!after || !after.latex.includes(to) || after.latex === cur) { it.err = "반영 안 됨: " + h; eyeCards(); return it.err; }
-  it.applied = { from, to, mine: whole != null || mine != null, at: new Date().toISOString() }; it.verdict = "반영 완료"; it.err = "";
-  (S.log = S.log || []).push({ act: "적용", id, where: it.where, index: it.index, how: it.applied.mine ? "내 수정" : "추천대로", from, to, at: it.applied.at });
-  if (whole != null) delete S.mine[id];
-  S.msgs = (await window.__K.exportRendered()).messages; eyeSave();
+  how = how || (whole != null || mine != null ? "직접" : "추천대로");
+  it.applied = { from, to, how, mine: how !== "추천대로", at: new Date().toISOString() }; it.verdict = "반영 완료"; it.err = ""; it.outside = false;
+  (S.log = S.log || []).push({ act: "적용", id, where: it.where, index: it.index, how, from, to, at: it.applied.at });
+  if (how === "직접") delete S.mine[id];
+  S.msgs = (await window.__K.exportRendered()).messages; eyeRuleScan(); eyeSave();
   await eyeReshot(it.index); eyeCards();
   return `#${id} 반영 완료 · ${h}`;
 };
@@ -2916,7 +3002,7 @@ window.__eyeUndo = async (id) => {
   await eyePick(it.index);
   const h = await window.__paneReplace(it.applied.to, it.applied.from);
   (S.log = S.log || []).push({ act: "되돌림", id, where: it.where, index: it.index, from: it.applied.to, to: it.applied.from, at: new Date().toISOString() });
-  it.applied = null; it.verdict = ""; S.msgs = (await window.__K.exportRendered()).messages; eyeSave();
+  it.applied = null; it.verdict = ""; S.msgs = (await window.__K.exportRendered()).messages; eyeRuleScan(); eyeSave();
   await eyeReshot(it.index); eyeCards();
   return `#${id} 되돌림 · ${h}`;
 };
@@ -2927,7 +3013,7 @@ async function eyeReshot(index) {
   await sleep(1200); S.pages[k] = await eyeShotPage(pages[k]); if (k === S.cur) eyeShow();
 }
 const EYE_KIND = { "깨짐": "A", "새 꼴": "B", "간격": "C" };
-const EYE_ST = [["고쳐줘", "fix"], ["아님", "no"], ["보류", "me"]];
+const EYE_ST = [["고쳐줘", "fix"], ["현재 맞음", "no"], ["보류", "me"]];
 const EYE_CSS = `#__eyePop{--bg:#eef1f4;--panel:#fff;--ink:#1d2733;--mute:#5d6b7a;--line:#d5dce4;--soft:#f5f7f9;--accent:#2f5d8a;--a:#c8372d;--b:#b7791f;--c:#64748b;--ok:#2f855a;--add:rgba(47,133,90,.16);--del:rgba(200,55,45,.14);--mark-a:rgba(200,55,45,.18);--mark-b:rgba(183,121,31,.2);--mark-c:rgba(100,116,139,.18);
   --sans:"Noto Sans KR","Malgun Gothic",system-ui,sans-serif;--mono:"IBM Plex Mono",Consolas,monospace;
   position:fixed;inset:10px;z-index:100001;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 36px rgba(0,0,0,.5);display:flex;flex-direction:column;font:14px/1.55 var(--sans);overflow:hidden}
@@ -2973,7 +3059,7 @@ const EYE_CSS = `#__eyePop{--bg:#eef1f4;--panel:#fff;--ink:#1d2733;--mute:#5d6b7
 #__eyePop .num{font:700 11px/18px var(--sans);min-width:18px;height:18px;border-radius:50%;background:var(--mute);color:#fff;text-align:center}
 #__eyePop .tick{width:18px;height:18px;border-radius:50%;background:var(--ok);color:#fff;font:700 11px/18px var(--sans);text-align:center}
 #__eyePop .chip{font-size:11px;padding:0 6px;border-radius:4px;border:1px solid var(--line);color:var(--mute)}
-#__eyePop .chip.s-fix{color:var(--accent);border-color:var(--accent)} #__eyePop .chip.s-me{color:var(--b);border-color:var(--b)} #__eyePop .chip.s-no{text-decoration:line-through}
+#__eyePop .chip.s-fix{color:var(--accent);border-color:var(--accent)} #__eyePop .chip.s-me{color:var(--b);border-color:var(--b)} #__eyePop .chip.s-no{color:var(--ok);border-color:var(--ok)}
 #__eyePop .chip.s-done{color:var(--ok);border-color:var(--ok);font-weight:700}
 #__eyePop .from{font-size:11px;padding:0 6px;border-radius:4px;background:var(--panel);border:1px solid var(--line);color:var(--mute)}
 #__eyePop .from.rule{color:var(--ok);border-color:var(--ok)} #__eyePop .from.ai{color:var(--accent);border-color:var(--accent)}
@@ -2990,6 +3076,7 @@ const EYE_CSS = `#__eyePop{--bg:#eef1f4;--panel:#fff;--ink:#1d2733;--mute:#5d6b7
 #__eyePop button.s:disabled{opacity:.45;cursor:not-allowed}
 #__eyePop .btn{font:inherit;font-size:13px;padding:5px 12px;border-radius:5px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
 #__eyePop .btn.ghost{background:transparent;color:var(--accent)}
+#__eyePop .btn:disabled{opacity:.4;cursor:not-allowed}
 #__eyePop .x{font:inherit;font-size:16px;width:32px;height:32px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
 #__eyePop textarea{font:inherit;width:100%;min-height:54px;border:1px solid var(--line);border-radius:5px;padding:6px 8px;background:var(--panel);color:var(--ink);resize:vertical}
 #__eyePop textarea.mono{font-family:var(--mono);font-size:12.5px;min-height:150px}
@@ -3009,7 +3096,15 @@ const EYE_CSS = `#__eyePop{--bg:#eef1f4;--panel:#fff;--ink:#1d2733;--mute:#5d6b7
 #__eyePop .prog{display:inline-block;width:70px;height:6px;border-radius:3px;background:var(--line);vertical-align:middle;overflow:hidden} #__eyePop .prog i{display:block;height:100%;background:var(--ok)}
 #__eyePop .help{font-size:12px;color:var(--mute);padding:6px 12px;border-top:1px solid var(--line);background:var(--soft)}
 #__eyeBig{position:fixed;inset:0;z-index:100002;background:rgba(10,14,20,.82);display:grid;place-items:center;padding:24px;cursor:zoom-out}
-#__eyeBig img{max-width:96vw;max-height:88vh;background:#fff;border-radius:6px} #__eyeBig p{color:#fff;margin:8px 0 0;text-align:center;font:13px sans-serif}`;
+#__eyeBig img{max-width:96vw;max-height:88vh;background:#fff;border-radius:6px} #__eyeBig p{color:#fff;margin:8px 0 0;text-align:center;font:13px sans-serif}
+#__eyeBusy{position:absolute;inset:0;z-index:5;background:rgba(10,14,20,.55);display:none;place-items:center}
+#__eyeBusy.on{display:grid} #__eyeBusy>div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px 24px;min-width:300px;display:grid;gap:10px;text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+#__eyeBusy b{font-size:15px} #__eyeBusy .bar2{height:8px;border-radius:4px;background:var(--line);overflow:hidden} #__eyeBusy .bar2 i{display:block;height:100%;background:var(--accent);transition:width .3s}
+#__eyePop .who{font-size:11px;padding:0 6px;border-radius:4px;border:1px solid var(--line);color:var(--mute)} #__eyePop .who.tool{color:var(--ok);border-color:var(--ok)}
+#__eyePop .chip.out{color:var(--b);border-color:var(--b);font-weight:700}
+#__eyePop .rulebox{border:1px solid var(--line);border-radius:4px;padding:8px 10px;display:grid;gap:6px;background:var(--panel)}
+#__eyePop .rulebox .lab{font-size:11.5px;font-weight:700;color:var(--mute)} #__eyePop .rulebox ul{margin:0;padding-left:18px;font-size:13px}
+#__eyePop .rulebox.none{border-color:var(--b);background:var(--mark-b)} #__eyePop .memo-top textarea{border-color:var(--b);min-height:70px}`;
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const eyeK = (it) => EYE_KIND[it.kind] || "B";
 const eyeStCls = (it) => it.verdict === "반영 완료" ? "done" : ((EYE_ST.find((s) => s[0] === it.verdict) || [])[1] || "new");
@@ -3032,7 +3127,7 @@ function eyeUI() {
   ov = document.createElement("div"); ov.id = "__eyePop";
   ov.innerHTML = `<div class="bar"><b>👁 눈검수</b><span id="__eyeFile"></span><span id="__eyeMsg" class="note"></span><span class="sp"></span>
   <span id="__eyeToast" class="toast" role="status"></span><span id="__eyeCnt" class="note"></span>
-  <button class="btn ghost" data-a="redo" type="button" title="쪽 그림을 다시 뽑고 규칙 추천을 다시 봄(고친 뒤 뒤 쪽이 밀렸을 때도)">다시 검수</button>
+  <button class="btn ghost" data-a="redo" type="button" title="문서를 다시 읽고 쪽 그림을 전부 새로 뽑음 · 자동 검사도 다시(찾은 것·판정·메모는 남음, AI 가 다시 보는 건 아님)">쪽 그림 새로 뽑기</button>
   <button class="btn ghost" data-a="rec" type="button" title="켰을 때·지금 JSON(그림 뺀 LaTeX 판) + 찾은 것·판정·메모·적용 기록을 파일 하나로 내려받기 — 관리자에게 전달">관리자용 기록 저장</button>
   <button class="btn" data-a="copy" type="button" title="찾은 것 · 판정 · 메모를 글로 복사 — 메신저나 AI 대화에 붙여 넣기">결과 글로 복사</button>
   <button class="x" data-a="close" type="button" title="닫기 — 찾은 것·판정은 남음(오른쪽 아래 [👁 눈검수]로 다시 열기)">✕</button></div>
@@ -3041,7 +3136,8 @@ function eyeUI() {
   <button data-z="w" type="button" title="쪽 폭에 맞춤 — 글이 또렷">폭 맞춤</button><button data-z="h" type="button" title="쪽 전체">쪽 전체</button><span>Ctrl+휠</span></div></div>
   <div id="__eyeView"></div></div>
 <div class="split" role="separator" aria-orientation="vertical" title="끌어서 카드 줄 폭 바꾸기"></div><div class="cards" id="__eyeCards"></div></div>
-<div class="help">상자 위 번호 = 카드 번호 · 카드를 누르면 펼쳐지고 쪽이 그 자리로 · 적용은 청크 LaTeX 창으로 들어가고(되돌리기 됨) 끝나면 💾 저장은 따로 · 결과 글로 복사 = 메신저나 AI 대화에 붙이기</div>`;
+<div class="help">상자 위 번호 = 카드 번호 · 카드를 누르면 펼쳐지고 쪽이 그 자리로 · 적용은 청크 LaTeX 창으로 들어가고(되돌리기 됨) 끝나면 💾 저장은 따로 · 결과 글로 복사 = 메신저나 AI 대화에 붙이기</div>
+<div id="__eyeBusy"><div><b>👁 쪽 그림 뽑는 중</b><span id="__eyeBusyMsg" class="note"></span><div class="bar2"><i id="__eyeBusyBar"></i></div><span class="note">끝날 때까지 기다려 주세요 — 미리보기 쪽이 넘어가는 건 정상</span></div></div>`;
   document.body.appendChild(ov);
   ov.addEventListener("click", eyeClick);
   ov.addEventListener("input", eyeInput);
@@ -3056,8 +3152,11 @@ function eyeUI() {
 }
 function eyeBar() {
   const S = window.__eyeS; if (!document.getElementById("__eyePop")) return;
-  const N = (S.items || []).length, n = (S.items || []).filter((x) => x.verdict === "반영 완료" || x.verdict === "아님").length;
+  const N = (S.items || []).length, n = (S.items || []).filter((x) => x.verdict === "반영 완료" || x.verdict === "현재 맞음").length;
   document.getElementById("__eyeMsg").textContent = S.busy ? "⏳ " + S.msg : S.msg || "";
+  const bz = document.getElementById("__eyeBusy");
+  if (bz) { bz.classList.toggle("on", !!S.busy); document.getElementById("__eyeBusyMsg").textContent = S.msg || "";
+    document.getElementById("__eyeBusyBar").style.width = S.prog ? (S.prog[0] / S.prog[1] * 100) + "%" : "8%"; }
   document.getElementById("__eyeFile").textContent = S.where ? `${(S.msgs.find((m) => m.type === "meta") || {}).part || ""} · ${S.pages ? S.pages.length : 0}쪽` : "";
   document.getElementById("__eyeCnt").innerHTML = N ? `<span class="prog"><i style="width:${n / N * 100}%"></i></span> 해결 ${n} / ${N}` : "";
   const has = new Set((S.items || []).map((x) => eyePageOf(x.index)));
@@ -3089,43 +3188,59 @@ function eyeCards() {
   box.scrollTop = keep;
   const it = list.find((x) => x.id === S.open); if (it) eyeBA(it);
 }
+const eyeWho = (it) => it.src === "규칙" ? `<span class="who tool">자동 검사</span>` : `<span class="who">AI 눈검사 · 확신 ${esc(it.conf)}</span>`;
+const eyeRuleOf = (it) => {
+  const S = window.__eyeS;
+  return { chk: (S.chk || {})[it.index] || [], line: it.line || [], fix: it.applied ? null : (S.fixTo || {})[it.index] || null };
+};
 function eyeCard(it) {
   const S = window.__eyeS, on = S.open === it.id, st = eyeStCls(it), m = eyeMsg(it), lx = m.latex || "";
-  const stName = it.verdict || "새로 찾음", src = it.src === "규칙" ? ["rule", "규칙 추천"] : ["ai", "AI 판단 추천"];
-  const head = `<div class="hd" data-id="${it.id}"><div class="top">${st === "done" ? '<span class="tick">✓</span>' : `<span class="num">${it.id}</span>`}<span class="pill ${eyeK(it)}">${esc(it.kind)}</span><span class="where">${esc(it.where)}</span><span class="conf">확신 ${esc(it.conf)}</span><span class="from ${src[0]}">${src[1]}</span><span class="chip s-${st}">${esc(stName)}</span></div><div class="what">${esc(it.what)}</div></div>`;
+  const head = `<div class="hd" data-id="${it.id}"><div class="top">${st === "done" ? '<span class="tick">✓</span>' : `<span class="num">${it.id}</span>`}<span class="pill ${eyeK(it)}">${esc(it.kind)}</span><span class="where">${esc(it.where)}</span>${eyeWho(it)}${it.verdict ? `<span class="chip s-${st}">${esc(it.verdict)}</span>` : ""}${it.outside ? '<span class="chip out">밖에서 고쳐짐</span>' : ""}</div><div class="what">${esc(it.what)}</div></div>`;
   if (!on) return `<div class="card${st === "done" ? " done" : ""}">${head}</div>`;
-  const key = it.applied ? it.applied.to : it.from, at = key && key.length < 400 ? lx.indexOf(key) : -1;
+  const R = eyeRuleOf(it), has = R.chk.length || R.line.length, big = R.fix ? "rule" : it.to && !it.applied ? "ai" : "mine";
+  const key = it.applied ? it.applied.to : it.from, at = key && key.length < 400 && !(it.applied && it.applied.how && it.applied.how !== "추천대로") ? lx.indexOf(key) : -1;
   const part = at >= 0 ? (at > 50 ? "…" : "") + lx.slice(Math.max(0, at - 50), at + key.length + 50) + (at + key.length + 50 < lx.length ? "…" : "") : "";
-  const mode = S.mode[it.id] || (it.to ? "ai" : "mine");
+  const memo = (top) => `<div class="${top ? "memo-top" : ""}"><div class="k">메모 (AI·관리자에게)${top ? " — 어떻게 고치면 되는지 적어 주세요" : ""}</div><textarea data-memo="${it.id}" placeholder="예: 둘째 줄도 첫 줄처럼 들여 시작 / 원고가 원래 이래요">${esc(it.memo)}</textarea></div>`;
+  const ruleBox = it.applied ? "" : has || R.fix ? `<div class="rulebox"><div class="lab">조판 규칙</div><ul>${R.chk.map((c) => `<li title="${esc(c.rule)}">조판 규칙과 다른 꼴 — ${esc(c.what)}</li>`).join("")}${R.line.map((l) => `<li title="줄 검사 ${esc(l.kind)}">그려 보니 ${l.line}째 줄 — ${esc(l.kind)}${l.what ? " · " + esc(l.what) : ""}</li>`).join("")}</ul>
+      ${R.fix ? `<div class="ba"><figure><figcaption>전(지금)</figcaption><img data-b="before" alt="지금"></figure><figure><figcaption>후(조판 규칙대로)</figcaption><img data-b="rule" alt="조판 규칙대로"></figure></div>
+        <details><summary class="note">바뀌는 LaTeX</summary><div class="code diff">${eyeDiff(lx, R.fix.latex)}</div></details>
+        <div class="tools"><button class="btn" type="button" data-apply="rule" data-id="${it.id}" title="${esc(R.fix.rules.join(" "))}">조판 규칙대로 고치기</button></div>`
+        : `<div class="note">${R.line.length ? "그려서 재는 고침이라 여기선 못 고쳐요 — AI 에게 \"알아서 고쳐줘\" 또는 아래에서 직접" : "바로 고칠 방법이 없는 꼴 — 아래에서 직접 고치거나 고쳐줘 + 메모"}</div>`}</div>`
+    : `<div class="rulebox none"><div class="lab">조판 규칙</div><div>조판 규칙에 아직 없음 — 어떻게 고치면 되는지 메모를 남겨 주세요</div></div>`;
+  const mode = S.mode[it.id] || (big === "mine" || !it.to ? "mine" : "ai");
   let ba = "";
   if (S.ba[it.id] !== false) {
-    const seg = `<div class="seg"><button type="button" data-mode="ai" data-id="${it.id}" aria-pressed="${mode === "ai"}">AI 추천대로</button><button type="button" data-mode="mine" data-id="${it.id}" aria-pressed="${mode === "mine"}">내가 고친 것</button></div>`;
-    if (it.applied) ba = `<div class="ba"><figure><figcaption>전(적용 전)</figcaption><img data-b="before" alt="적용 전"></figure><figure><figcaption>후(지금 — ${it.applied.mine ? "내가 고친 것" : "추천대로"})</figcaption><img data-b="after" alt="지금"></figure></div>
+    const seg = it.to ? `<div class="seg"><button type="button" data-mode="ai" data-id="${it.id}" aria-pressed="${mode === "ai"}">추천대로</button><button type="button" data-mode="mine" data-id="${it.id}" aria-pressed="${mode === "mine"}">직접 고치기</button></div>` : "";
+    const how = it.applied && (it.applied.how || (it.applied.mine ? "직접" : "추천대로"));
+    if (it.applied) ba = `<div class="ba"><figure><figcaption>전(적용 전)</figcaption><img data-b="before" alt="적용 전"></figure><figure><figcaption>후(지금 — ${esc(how)})</figcaption><img data-b="after" alt="지금"></figure></div>
       <div><div class="k">바뀐 LaTeX</div><div class="code diff">${eyeDiff(it.applied.from, it.applied.to)}</div></div>`;
-    else if (mode === "ai") ba = `<div>${seg}</div>` + (it.to ? `<div class="ba"><figure><figcaption>전(지금)</figcaption><img data-b="before" alt="지금"></figure><figure><figcaption>후(추천 LaTeX 렌더)</figcaption><img data-b="after" alt="추천대로"></figure></div>
+    else if (mode === "ai" && it.to) ba = `<div>${seg}</div><div class="ba"><figure><figcaption>전(지금)</figcaption><img data-b="before" alt="지금"></figure><figure><figcaption>후(추천대로)</figcaption><img data-b="after" alt="추천대로"></figure></div>
         <div><div class="k">바뀌는 LaTeX</div><div class="code diff">${eyeDiff(it.from, it.to)}</div></div>
-        <div class="tools"><button class="s go" type="button" data-apply="ai" data-id="${it.id}">이대로 적용</button><button class="s go" type="button" data-apply="ai-next" data-id="${it.id}">적용하고 다음</button><button class="s" type="button" data-st="고쳐줘" data-id="${it.id}">나중에 모아서(고쳐줘)</button></div>`
-      : `<div class="ba"><figure><figcaption>전(지금 쪽 그림)</figcaption><canvas data-crop="${it.id}"></canvas></figure></div><div class="ph">추천 없음 — '내가 고친 것'으로 직접 고치거나 판정에서 고쳐줘(메모에 원하는 모양)</div>`);
+        <div class="tools"><button class="${big === "ai" ? "btn" : "s go"}" type="button" data-apply="ai" data-id="${it.id}">이대로 적용</button><button class="s go" type="button" data-apply="ai-next" data-id="${it.id}">적용하고 다음</button></div>`;
     else {
       const v = S.mine[it.id] != null ? S.mine[it.id] : lx, bad = window.__eyeSyntax(v), same = v === lx;
-      ba = `<div>${seg}</div><div><div class="k">이 청크 LaTeX — 직접 고쳐 보기 (선택된 곳 = 해당 부분)<button class="s" type="button" data-goto="${it.id}">해당 부분으로</button></div><textarea class="mono" data-mine="${it.id}">${esc(v)}</textarea></div>
+      ba = `${seg ? `<div>${seg}</div>` : `<div class="k">직접 고치기</div>`}<div><div class="k">이 청크 LaTeX — 고칠 곳을 바꾸세요${it.from ? '<button class="s" type="button" data-goto="' + it.id + '">해당 부분으로</button>' : ""}</div><textarea class="mono" data-mine="${it.id}">${esc(v)}</textarea></div>
         <div data-lint="${it.id}">${eyeLint(bad)}</div>
         <div><div class="k">원본과 다른 곳</div><div class="code diff" data-mdiff="${it.id}">${same ? "<div>아직 바뀐 곳 없음</div>" : eyeDiff(lx, v)}</div></div>
-        <div class="ba"><figure><figcaption>전</figcaption><img data-b="before" alt="지금"></figure><figure><figcaption>후(고친 LaTeX 렌더)</figcaption><img data-b="mine" alt="내가 고친 것"></figure></div>
-        <div class="tools"><button class="s go" type="button" data-apply="mine" data-id="${it.id}"${bad.length || same ? " disabled" : ""}>내 수정 적용</button><button class="s go" type="button" data-apply="mine-next" data-id="${it.id}"${bad.length || same ? " disabled" : ""}>적용하고 다음</button><button class="s" type="button" data-reset="${it.id}">원래대로</button></div>`;
+        <div class="ba"><figure><figcaption>전</figcaption><img data-b="before" alt="지금"></figure><figure><figcaption>후(고친 LaTeX)</figcaption><img data-b="mine" alt="직접 고친 것"></figure></div>
+        <div class="tools"><button class="${big === "mine" ? "btn" : "s go"}" type="button" data-apply="mine" data-id="${it.id}"${bad.length || same ? " disabled" : ""}>고친 대로 적용</button><button class="s go" type="button" data-apply="mine-next" data-id="${it.id}"${bad.length || same ? " disabled" : ""}>적용하고 다음</button><button class="s" type="button" data-reset="${it.id}">원래대로</button></div>`;
     }
   }
+  const noRule = !it.applied && !has && !R.fix;
   return `<div class="card on${st === "done" ? " done" : ""}">${head}<div class="body">
     <div class="problem ${eyeK(it)}"><div><div class="lab">무엇이 문제인가</div><div class="q">${esc(it.what)}</div></div>
-      ${it.fix ? `<div><div class="lab">이렇게 고치면 됩니다 <span class="from ${src[0]}">${src[1]}</span></div><div class="fx">${esc(it.fix)}</div></div>` : ""}</div>
+      ${it.fix ? `<div><div class="lab">고칠 방법 ${eyeWho(it)}</div><div class="fx">${esc(it.fix)}</div></div>` : ""}</div>
+    ${it.outside ? `<div class="er">팝업 밖에서 이 청크가 고쳐졌어요 — 그림·원문은 새로 읽은 것</div>` : ""}
+    ${ruleBox}
+    ${noRule ? memo(true) : ""}
     ${part ? `<div><div class="k">원문 LaTeX (해당 부분)<button class="s" type="button" data-copy="src" data-id="${it.id}">복사</button></div><code>${esc(part)}</code></div>` : ""}
     <div class="tools"><button class="s" type="button" data-full="${it.id}" aria-pressed="${!!S.full[it.id]}">전체 LaTeX(이 청크)</button><button class="s" type="button" data-ba="${it.id}" aria-pressed="${S.ba[it.id] !== false}">전/후 보기</button></div>
     ${S.full[it.id] ? `<div><div class="k">이 청크 전체 LaTeX<button class="s" type="button" data-copy="full" data-id="${it.id}">복사</button></div><code class="full">${esc(lx)}</code></div>` : ""}
     ${it.err ? `<div class="er">${esc(it.err)}</div>` : ""}
     ${ba}
-    <div><div class="k">판정</div>${it.verdict === "반영 완료" ? `<div class="donebar">✓ 반영 완료 (${it.applied && it.applied.mine ? "내가 고친 것" : "추천대로"})<button class="s" type="button" data-undo="${it.id}">되돌리기</button></div>`
+    <div><div class="k">판정</div>${it.verdict === "반영 완료" ? `<div class="donebar">✓ 반영 완료 (${esc(it.applied && (it.applied.how || (it.applied.mine ? "직접" : "추천대로")))})<button class="s" type="button" data-undo="${it.id}">되돌리기</button></div>`
       : `<div class="st">${EYE_ST.map(([n]) => `<button class="s" type="button" data-st="${n}" data-id="${it.id}" aria-pressed="${it.verdict === n}">${n}</button>`).join("")}</div>`}</div>
-    <div><div class="k">메모 (AI·관리자에게)</div><textarea data-memo="${it.id}" placeholder="예: 여기는 탭 하나만 / 원고가 원래 이래요">${esc(it.memo)}</textarea></div>
+    ${noRule ? "" : memo(false)}
   </div></div>`;
 }
 const eyeLint = (bad) => bad.length ? `<div class="lint bad">✗ 적용할 수 없음 — ${esc(bad.join(" · "))}</div>` : `<div class="lint ok">✓ 문법 짝 맞음 · 적용 전에 렌더로 한 번 더 확인(넘침·처음 보는 명령은 막음)</div>`;
@@ -3160,7 +3275,9 @@ async function eyeClick(e) {
   t.disabled = true; const old = t.textContent; t.textContent = "확인 중…";
   let r = "";
   try {
-    if (t.dataset.apply) r = await window.__eyeApply(id, /mine/.test(t.dataset.apply) ? { whole: S.mine[id] } : {});
+    const fx = (S.fixTo || {})[it.index];
+    if (t.dataset.apply === "rule") r = fx ? await window.__eyeApply(id, { whole: fx.latex, how: "조판 규칙대로" }) : "조판 규칙대로 고칠 것이 없음";
+    else if (t.dataset.apply) r = await window.__eyeApply(id, /mine/.test(t.dataset.apply) ? { whole: S.mine[id], how: "직접" } : {});
     else if (t.dataset.undo) r = await window.__eyeUndo(id);
   } catch (err) { r = "멈춤: " + err.message; it.err = r; }
   eyeToast(r);
@@ -3204,9 +3321,13 @@ async function eyeBA(it) {
     }
     await it._baP;
   }
+  const k0 = it._lineK, ln = await eyeLine(it);
+  if (k0 !== it._lineK && ln.length && S.open === it.id) { eyeCards(); return; }
   const card = document.querySelector("#__eyeCards .card.on"); if (!card || S.open !== it.id) return;
   const put = (sel, png) => { const im = card.querySelector(`img[data-b="${sel}"]`); if (im && png) im.src = png; };
   put("before", it.beforePng); put("after", it.afterPng);
+  const fx = !it.applied && (S.fixTo || {})[it.index];
+  if (fx && card.querySelector('img[data-b="rule"]')) { if (it._ruleK !== fx.latex) { it._ruleK = fx.latex; it.rulePng = (await window.__eyeRender(fx.latex, { wmm: S.wmm })).png; } put("rule", it.rulePng); }
   if (S.mine[it.id] != null && !window.__eyeSyntax(S.mine[it.id]).length) put("mine", (await window.__eyeRender(S.mine[it.id], { wmm: S.wmm })).png); else put("mine", it.beforePng);
   const cv = card.querySelector(`canvas[data-crop="${it.id}"]`), k2 = eyePageOf(it.index), p = k2 >= 0 && S.pages[k2], b = p && p.boxes.find((x) => x.index === it.index);
   if (cv && b) { const im = new Image(); im.onload = () => { cv.width = Math.round(b.w); cv.height = Math.round(b.h); cv.getContext("2d").drawImage(im, b.x, b.y, b.w, b.h, 0, 0, cv.width, cv.height); }; im.src = p.png; }
@@ -3215,7 +3336,7 @@ window.__eyeButton = () => {
   if (typeof document === "undefined" || !document.body || document.getElementById("__eyeBtn")) return;
   const b = document.createElement("button"); b.id = "__eyeBtn"; b.textContent = "👁 눈검수";
   b.style.cssText = "position:fixed;right:14px;bottom:14px;z-index:99980;font:bold 13px sans-serif;padding:6px 12px;border-radius:18px;border:0;background:#2f5d8a;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer";
-  b.onclick = () => { const S = window.__eyeS; if (S && S.pages && S.pages.some(Boolean)) { eyeUI(); eyeShow(); eyeCards(); return; }
+  b.onclick = () => { const S = window.__eyeS; if (S && S.pages && S.pages.some(Boolean)) { eyeUI(); eyeShow(); eyeCards(); window.__eyeRefresh(); return; }
     const r = window.__eyeOpen(); if (/^눈검수를 못 씀/.test(r)) { b.textContent = "👁 북마크 '도구'를 새로 만들어야 씀"; b.style.background = "#c62828"; } };
   document.body.appendChild(b);
 };
