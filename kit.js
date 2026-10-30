@@ -1,5 +1,5 @@
-// page-kit v2026.10.30-1716
-window.__kitBuilt = "v2026.10.30-1716";
+// page-kit v2026.10.30-1733
+window.__kitBuilt = "v2026.10.30-1733";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
