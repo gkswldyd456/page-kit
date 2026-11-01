@@ -1,5 +1,5 @@
-// page-kit v2026.10.31-1209
-window.__kitBuilt = "v2026.10.31-1209";
+// page-kit v2026.11.01-1331
+window.__kitBuilt = "v2026.11.01-1331";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -2764,9 +2764,25 @@ const eyeKey = (msgs) => {
   return `eye:${m.part || ""}:${msgs.length}:${(h >>> 0).toString(36)}`;
 };
 const eyeBare = (it) => Object.fromEntries(Object.entries(it).filter(([k]) => !k.startsWith("_") && !k.endsWith("Png")));
-const eyeSave = () => { const S = window.__eyeS; if (!S) return;
-  try { localStorage.setItem(S.key, JSON.stringify(S.items.map(eyeBare))); localStorage.setItem(S.key + ":log", JSON.stringify(S.log || [])); localStorage.setItem(S.key + ":drop", JSON.stringify(S.dropped || [])); } catch (e) {  } };
+const EYE_SIGK = ["id", "verdict", "memo", "applied", "lost", "stale", "plan", "from", "to", "fix"];
+const eyeSig = (S) => { const s = JSON.stringify([S.items.map((x) => EYE_SIGK.map((k) => x[k] ?? null)), S.log || [], (S.orphans || []).length, (S.seen || []).length]); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return s.length + ":" + (h >>> 0).toString(36); };
+const eyeSave = () => { const S = window.__eyeS; if (!S || !S.key) return;
+  S.docName = window.__eyeDocName || S.docName || "";
+  S.info = { ...(S.info || {}), at: Date.now(), doc: S.docName || (S.info || {}).doc || "" };
+  try { localStorage.setItem(S.key, JSON.stringify(S.items.map(eyeBare))); localStorage.setItem(S.key + ":log", JSON.stringify(S.log || [])); localStorage.setItem(S.key + ":drop", JSON.stringify(S.dropped || []));
+    localStorage.setItem(S.key + ":orph", JSON.stringify(S.orphans || [])); localStorage.setItem(S.key + ":seen", JSON.stringify(S.seen || []));
+    localStorage.setItem(S.key + ":info", JSON.stringify(S.info)); S.noStore = false; } catch (e) { S.noStore = true;  } };
 const eyeLoad = (key) => { try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch (e) { return []; } };
+if (typeof document !== "undefined" && !window.__eyeDocHook) {
+  window.__eyeDocHook = true;
+  document.addEventListener("change", (e) => { try { const t = e.target, f = t && t.id !== "__eyeRecIn" && t.files && t.files[0];
+    if (f && /\.(json|h[a-z]{2,3})$/i.test(f.name)) window.__eyeDocName = f.name; } catch (err) {  } }, true);
+  if (typeof window.showSaveFilePicker === "function") {
+    window.__eyeSavePicker = window.showSaveFilePicker;
+    window.showSaveFilePicker = async function (...a) { const h = await window.__eyeSavePicker.apply(this, a);
+      try { if (h && /\.json$/i.test(h.name || "")) window.__eyeDocName = h.name; } catch (err) {  } return h; };
+  }
+}
 const EYE_DROP = ["pdf", "svg", "hash", "segments", "blockPositions", "paragraphBreaks", "bacenters", "renderStatus", "renderWarnings", "height", "inlineImages", "imageData"];
 const eyeLean = (msgs) => msgs.map((m) => { const o = { ...m }; for (const k of EYE_DROP) delete o[k];
   if (o.tableData && Array.isArray(o.tableData.cells)) o.tableData = { ...o.tableData, cells: o.tableData.cells.map((r) => (r || []).map((c) => { if (!c) return c; const q = { ...c }; for (const k of EYE_DROP) delete q[k]; return q; })) };
@@ -2776,11 +2792,12 @@ const eyeStart = (key, msgs) => {
   const lean = eyeLean(msgs); try { localStorage.setItem(key + ":start", JSON.stringify(lean)); } catch (e) {  }
   return lean;
 };
-window.__eyeRecordName = (msgs) => {
+window.__eyeRecordName = (msgs, doc) => {
   const K = window.__K, k = K.key(msgs), meta = msgs.find((m) => m.type === "meta") || {};
   const part = k === "A" && meta.part === "문제" ? "본문" : meta.part || "파트모름";
-  const d = new Date(), p2 = (n) => String(n).padStart(2, "0");
-  return `눈검수기록_전달용_${k ? (k === "A" ? K.nA : K.nB) : "업체모름"}_${part}_${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}.json`;
+  const d = new Date(), p2 = (n) => String(n).padStart(2, "0"), at = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`;
+  const base = String(doc || "").replace(/\.(json|h[a-z]{2,3})$/i, "").replace(/_눈검수기록_\d{8}-\d{4}$/, "");
+  return base ? `${base}_눈검수기록_${at}.json` : `눈검수기록_${k ? (k === "A" ? K.nA : K.nB) : "업체모름"}_${part}_${at}.json`;
 };
 async function eyeRecItems() {
   const S = window.__eyeS, out = [];
@@ -2795,14 +2812,126 @@ async function eyeRecItems() {
 }
 window.__eyeRecord = async ({ download = true } = {}) => {
   const S = window.__eyeS; if (!S || !S.key) return "먼저 눈검수를 열기";
-  const now = (await window.__K.exportRendered()).messages, name = window.__eyeRecordName(now);
-  const rec = { kind: "눈검수기록", tool: (window.__kitCfg || {}).ver || "", at: new Date().toISOString(), name,
-    summary: window.__eyeText(), items: await eyeRecItems(), dropped: S.dropped || [], log: S.log || [],
+  const now = (await window.__K.exportRendered()).messages, doc = window.__eyeDocName || S.docName || (S.info || {}).doc || "", name = window.__eyeRecordName(now, doc);
+  const rec = { kind: "눈검수기록", fmt: 2, tool: (window.__kitCfg || {}).ver || "", at: new Date().toISOString(), name, doc,
+    summary: window.__eyeText(), items: await eyeRecItems(), orphans: S.orphans || [], seen: S.seen || [], dropped: S.dropped || [], log: S.log || [],
     start: S.start || null, end: eyeLean(now) };
   const txt = JSON.stringify(rec);
-  if (download) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "application/json" })); a.download = name;
-    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); }
-  return `${name} · ${Math.round(txt.length / 1024)}KB · 찾은 것 ${rec.items.length} · 적용 기록 ${rec.log.length}${rec.start ? "" : " · 주의: 켰을 때 JSON 없음"}`;
+  let saved = name;
+  if (download) {
+    let done = false; const pick = window.__eyeSavePicker || window.showSaveFilePicker;
+    if (typeof pick === "function") {
+      try { const h = await pick.call(window, { suggestedName: name, types: [{ description: "눈검수 기록", accept: { "application/json": [".json"] } }] });
+        const w = await h.createWritable(); await w.write(txt); await w.close(); saved = h.name || name; done = true; }
+      catch (e) { if (e && e.name === "AbortError") return "저장 취소 — 기록 파일을 안 만듦"; }
+    }
+    if (!done) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "application/json" })); a.download = name;
+      document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); saved = name + "(내려받기 폴더)"; }
+    S.info = { ...(S.info || {}), fileSig: eyeSig(S), fileAt: Date.now(), fileName: saved }; eyeSave(); eyeBar();
+  }
+  return `${saved} · ${Math.round(txt.length / 1024)}KB · 찾은 것 ${rec.items.length} · 적용 기록 ${rec.log.length}${rec.start ? "" : " · 주의: 켰을 때 JSON 없음"}`;
+};
+const eyeMeta = (msgs) => (msgs || []).find((m) => m && m.type === "meta") || {};
+const eyeSk = (s) => String(s || "").replace(/\\setmyfont\w*\{[^}]*\}\{[^}]*\}|\\hspace\*?\{[^}]*\}|\\q?quad|\\tab|\\[,;:! ]|~|\s+/g, "");
+function eyePlace(rec, msgs) {
+  const byLx = new Map(), bySk = new Map();
+  for (const m of msgs) if (m.latex) { (byLx.get(m.latex) || byLx.set(m.latex, []).get(m.latex)).push(m); const k = eyeSk(m.latex); (bySk.get(k) || bySk.set(k, []).get(k)).push(m); }
+  const map = new Map(), pos = new Map(); let n = 0, hit = 0;
+  const end = Array.isArray(rec.end) ? rec.end : [];
+  end.forEach((r, i) => {
+    if (!r || !r.latex) return; n++;
+    const c = byLx.get(r.latex) || bySk.get(eyeSk(r.latex)); if (!c) return; hit++;
+    map.set(r.index, c); pos.set(r.index, i / Math.max(1, end.length - 1));
+  });
+  return { map, pos, n, hit, ratio: n ? hit / n : 0 };
+}
+const eyeCount = (s, t) => (t ? String(s || "").split(t).length - 1 : 0);
+window.__eyeImport = async (text, { force = false } = {}) => {
+  const S = window.__eyeS;
+  if (!S || !S.msgs || !S.key) return "먼저 문서를 불러오고 [👁 눈검수]를 열기";
+  if (S.busy) return "쪽 그림을 다 뽑은 뒤에 불러오기";
+  if (!force) S.importPend = null;
+  let rec; try { rec = typeof text === "string" ? JSON.parse(text) : text; } catch (e) { return "읽을 수 없는 파일(JSON 아님)"; }
+  if (Array.isArray(rec)) return "이건 문서 JSON — 문서는 화면 위 📂 불러오기로, 여기는 '눈검수기록' 파일";
+  if (!rec || rec.kind !== "눈검수기록" || !Array.isArray(rec.items)) return "눈검수 기록 파일이 아님";
+  S.msgs = (await window.__K.exportRendered()).messages; S.where = window.__where(S.msgs);
+  const msgs = S.msgs, K = window.__K, rm = eyeMeta(rec.end || rec.start), cm = eyeMeta(msgs);
+  const vn = (ms) => { const k = K.key(ms); return k ? (K.c.name || {})[k] || k : "?"; };
+  if ((rec.end || rec.start) && (K.key(msgs) !== K.key(rec.end || rec.start) || (rm.part || "") !== (cm.part || ""))) return `다른 책·파트의 기록(기록: ${vn(rec.end || rec.start || [])} ${rm.part || "?"} · 지금: ${vn(msgs)} ${cm.part || "?"}) — 불러오지 않음`;
+  const P = eyePlace(rec, msgs);
+  if (rec.end && P.ratio < 0.5 && !force) { S.importPend = rec; return `이 문서의 기록이 아닌 것 같음(같은 글 청크 ${P.hit}/${P.n}${rec.doc ? ` · 기록 만든 문서 ${rec.doc}` : ""}) — 다른 단원·파트 파일이면 맞는 기록을 고르고, 같은 파일인데 많이 고친 거면 [그래도 불러오기](자리 이름으로 붙임)`; }
+  S.importPend = null;
+  const worth = S.items.some((x) => x.src !== "규칙" || x.verdict || x.memo || x.applied) || (S.log || []).length;
+  if (!S.bak && worth) { S.bak = { items: S.items.map(eyeBare), log: S.log || [], dropped: S.dropped || [], orphans: S.orphans || [], seen: S.seen || [], start: S.start, info: S.info || {}, at: Date.now() };
+    try { localStorage.setItem(S.key + ":bak", JSON.stringify(S.bak)); } catch (e) {  } }
+  const W = new Map(); for (const m of msgs) if (m.latex) { const w = eyeName(m) || S.where[m.index] || ""; (W.get(w) || W.set(w, []).get(w)).push(m); }
+  const has = (m, s) => !!s && (m.latex || "").includes(s);
+  const pick = (x) => { const c = P.map.get(x.index); if (!c) return null; if (c.length === 1) return c[0];
+    const w = c.find((y) => eyeName(y) === x.where); if (w) return w;
+    const want = P.pos.get(x.index); return c.reduce((a, b) => Math.abs(msgs.indexOf(a) / msgs.length - want) <= Math.abs(msgs.indexOf(b) / msgs.length - want) ? a : b); };
+  const cnt = { 그대로: 0, "원문 바뀜": 0, "이미 반영": 0, "이 문서엔 없는 적용": 0, "못 붙임": 0 };
+  const items = [], orphans = [];
+  for (const x0 of [...rec.items, ...(rec.orphans || [])]) {
+    const x = eyeBare(x0); for (const k of ["found_by", "confidence", "rule_ids", "rule_whats", "line", "fix_kind", "new_rule_candidate"]) delete x[k];
+    if (x.verdict === "아님") x.verdict = "현재 맞음";
+    if (x.src === "규칙" && !x.verdict && !x.memo && !x.applied && !x.lost) continue;
+    const key = x.applied ? x.applied.to : x.lost ? x.lost.from : x.from;
+    let m = pick(x);
+    if (!m) { const c = (W.get(x.where) || []).filter((y) => has(y, key) || (x.applied && has(y, x.applied.from)) || (x.lost && has(y, x.lost.to)));
+      m = c[0] || (W.get(x.where) || [])[0]; }
+    if (!m) { orphans.push(x); cnt["못 붙임"]++; continue; }
+    x.index = m.index; x.where = eyeName(m) || x.where; x.err = ""; delete x.stale; delete x.outside;
+    const gone = (f, t) => { x.stale = { from: f, to: t }; x.err = "기록 저장 뒤 이 자리가 바뀜 — 다시 보기(지금 원문은 '전체 LaTeX')"; cnt["원문 바뀜"]++; };
+    if (x.applied) {
+      if (has(m, x.applied.to)) cnt.그대로++;
+      else if (has(m, x.applied.from)) { x.lost = x.applied; x.applied = null; x.verdict = ""; x.err = "기록엔 적용했지만 이 문서엔 없음 — [기록대로 다시 적용]"; cnt["이 문서엔 없는 적용"]++; }
+      else { gone(x.applied.from, x.applied.to); x.applied = null; x.verdict = ""; }
+    } else if (x.lost) {
+      if (has(m, x.lost.to)) { x.applied = x.lost; delete x.lost; x.verdict = "반영 완료"; cnt.그대로++; }
+      else if (has(m, x.lost.from)) { x.err = "기록엔 적용했지만 이 문서엔 없음 — [기록대로 다시 적용]"; cnt["이 문서엔 없는 적용"]++; }
+      else { gone(x.lost.from, x.lost.to); delete x.lost; }
+    } else if (!x.from || has(m, x.from)) cnt.그대로++;
+    else if (x.to && eyeCount(m.latex, x.to) === 1 && (!x.verdict || x.verdict === "고쳐줘")) { x.applied = { from: x.from, to: x.to, how: "밖에서", mine: true, at: rec.at }; x.verdict = "반영 완료"; cnt["이미 반영"]++; }
+    else gone(x.from, x.to);
+    items.push(x);
+  }
+  S.items = items; S.orphans = orphans; S.log = rec.log || []; S.dropped = rec.dropped || []; S.seen = rec.seen || []; S.aiAt = null;
+  S.next = Math.max(0, ...items.map((x) => x.id), ...orphans.map((x) => x.id || 0)) + 1;
+  for (const r of window.__eyeRules(msgs)) if (!S.items.some((x) => x.index === r.index && (x.from === r.from || (x.stale && x.stale.from === r.from)))) S.items.push({ ...r, id: S.next++, verdict: "", memo: "" });
+  if (rec.start) { S.start = rec.start; try { localStorage.setItem(S.key + ":start", JSON.stringify(rec.start)); } catch (e) {  } }
+  S.mode = {}; S.mine = {}; S.full = {}; S.ba = {}; S.open = null; S.fromChrome = 0;
+  S.info = { ...(S.info || {}), recFrom: rec.name || "", recDoc: rec.doc || "" };
+  eyeRuleScan(); S.info.fileSig = eyeSig(S); eyeSave();
+  const sum = Object.entries(cnt).filter(([k, v]) => v || k === "그대로").map(([k, v]) => `${k} ${v}`).join(" · ");
+  S.importMsg = `기록 불러옴(${rec.name || "이름 없음"}${rec.doc ? ` · 만든 문서 ${rec.doc}` : ""}) — 카드 ${items.length}장 · ${sum}` + (P.n && P.hit < P.n ? ` · 그 뒤 바뀐 청크 ${P.n - P.hit}` : "") + (S.noStore ? " · 이 크롬엔 저장 못 함 — 끝나면 [기록 저장]" : "");
+  eyeShow(); eyeCards();
+  return S.importMsg;
+};
+window.__eyeImportUndo = () => {
+  const S = window.__eyeS; if (!S || !S.bak) return "백업 없음";
+  const b = S.bak; S.items = b.items || []; S.log = b.log || []; S.dropped = b.dropped || []; S.orphans = b.orphans || []; S.seen = b.seen || []; S.start = b.start || S.start; S.info = b.info || {};
+  S.next = Math.max(0, ...S.items.map((x) => x.id)) + 1; S.bak = null; S.importMsg = "불러오기 전으로 돌림"; S.mode = {}; S.mine = {}; S.open = null;
+  try { localStorage.removeItem(S.key + ":bak"); if (S.start) localStorage.setItem(S.key + ":start", JSON.stringify(S.start)); } catch (e) {  }
+  eyeRuleScan(); eyeSave(); eyeShow(); eyeCards(); return S.importMsg;
+};
+window.__eyeOrphans = () => { const L = (window.__eyeS || {}).orphans || []; if (!L.length) return "못 붙인 카드 없음";
+  return window.__show(L.map((x) => `#${x.id} ${x.where} · ${x.what} · ${x.verdict || "판정 전"}${x.memo ? " · 메모: " + x.memo : ""}\n   원문: ${x.from}`).join("\n"), 8000); };
+window.__eyeReapply = (ids) => {
+  const S = window.__eyeS; if (!S || S.busy) return "뽑는 중";
+  const L = S.items.filter((x) => x.lost && (!ids || ids.includes(x.id))); if (!L.length) return "다시 적용할 카드 없음";
+  S.busy = true; eyeUI(); eyeBar();
+  (async () => {
+    const out = [];
+    try {
+      for (let i = 0; i < L.length; i++) {
+        const it = L[i]; S.prog = [i + 1, L.length]; S.msg = `기록대로 다시 적용 ${i + 1} / ${L.length}`; eyeBar();
+        try { out.push(await window.__eyeApply(it.id, { pair: [it.lost.from, it.lost.to], how: it.lost.how })); } catch (e) { out.push(`#${it.id} 멈춤: ${e.message}`); }
+      }
+      const ok = L.filter((x) => x.applied).length;
+      S.msg = `기록대로 다시 적용 ${ok} / ${L.length}` + (ok < L.length ? " — 안 된 카드는 카드의 빨간 글" : ""); S.reapplyOut = out;
+    } finally { S.busy = false; S.prog = null; eyeShow(); eyeCards(); }
+  })();
+  return "started — 진행은 __eyeS.msg";
 };
 const EYE_CHOICE = /\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\}\s*(?:\\sffamily\s*)?①/;
 const eyeName = (m) => { const w = window.__eyeS.where[m.index] || ""; return !w.includes("선지") && m.type === "question" && EYE_CHOICE.test(m.latex || "") ? w + " (선지)" : w; };
@@ -2816,6 +2945,7 @@ const eyeFind = ({ index, no, part, from }) => {
 };
 const eyePageOf = (index) => (window.__eyeS.pages || []).findIndex((p) => p && p.boxes.some((b) => b.index === index));
 const EYE_GUIDE = `눈검수 — 쪽 그림을 책 보듯 보고, 자동 도구가 못 잡은 '사람이 고칠 만한 이상한 곳'을 찾는다.
+먼저: __eyeLeft() — 이어서 하는 거면 남은 쪽만 본다(이미 본 쪽은 건너뛰기 · 이미 올린 카드는 __eyeList()).
 보는 법: __eyePage(n) 으로 n쪽(폭 맞춤) → __eyeTo(1)·__eyeTo(2)·__eyeTo(3) 위/가운데/아래마다 화면을 찍어 본다. 의심 곳만 확대(zoom). 한 쪽 다 보면 다음 쪽.
 볼 것: 1 띄어쓰기 벌어짐(양쪽 정렬로 낱말 사이가 유난히 넓은 줄) 2 줄 시작 자리 어긋남(접힌 줄이 맨 왼쪽) 3 겹침·잘림·칸 밖 4 깨진 표시(명령어 글자·빈 네모·이상한 기호·분수 깨짐)
   5 튀는 글자(크기·굵기·장평) 6 수식 묶음 모양(= 세로줄·꼬리 오른쪽 끝) 7 선지·보기 배열 8 표·그림 9 줄이 . , ) ? 로 시작 10 같은 꼴 다른 처리 11 간격 12 그 밖에 조판하는 사람이 고칠 곳
@@ -2830,7 +2960,7 @@ const EYE_GUIDE = `눈검수 — 쪽 그림을 책 보듯 보고, 자동 도구�
   확실하지 않으면 '낮음'으로라도 올린다(사람이 고른다). 같은 꼴이 여러 번이면 전부.
 잘못 올렸으면 __eyeDel(번호).
 카드마다 그 청크의 조판 규칙 검사(LaTeX 꼴 · 그려서 줄 검사)는 도구가 붙인다 — 따로 __check 를 돌릴 필요 없음. 자동 검사(분수 깨짐 등)도 열 때 도구가 올린다.
-끝나면: __eyeList() 로 올린 것 확인 · 사람에게 "팝업 카드에서 판정·적용하세요"라고 알린다. 적용·[관리자용 기록 저장]은 사람이 누른다.
+끝나면: __eyeList() 로 올린 것 확인 · 사람에게 "팝업 카드에서 판정·적용하세요"라고 알린다. 적용·[기록 저장]·[기록 불러오기]는 사람이 누른다(기록 파일 고르기는 사람 몫).
 '고쳐줘' 처리(사람이 "고쳐줘 처리해"): __eyeTodo() — 고쳐줘 카드·메모·그 번호의 청크 전부. 메모대로 고칠 꼴을 정하고(규칙집·같은 파일의 다른 곳을 근거로)
   __eyePlan(카드번호, {part:"선지", from:"원문 조각", to:"고친 조각", fix:"사람 말로 무엇을 어떻게"}) — 카드에 전/후 그림이 뜬다. 카드가 엉뚱한 청크에 붙어 있으면 part 로 옮긴다.
   사람에게 카드마다 전/후를 말로 짧게 + "팝업 카드 그림 보고 괜찮으면 말해 주세요". 사람이 괜찮다고 하면 __eyeApply(카드번호). 메모가 없거나 뜻이 애매하면 고치지 말고 묻는다.`;
@@ -2841,6 +2971,13 @@ window.__eyeGuide = () => {
   const ok = [...(EYE_SPACE[k] || []).map((x) => x[2]), ...EYE_OK.filter((o) => o.rule[k]).map((o) => o.text)];
   return `${EYE_GUIDE}\n이 파일 = ${nm} 꼴. 규칙대로인 꼴(올리지 않음):\n${ok.map((t) => "  · " + t).join("\n")}`;
 };
+function eyeFixApplied(msgs) {
+  for (const it of window.__eyeS.items) {
+    const m = msgs.find((x) => x.index === it.index); it.where = (m && eyeName(m)) || it.where || "";
+    if (it.applied && !(m && (m.latex || "").includes(it.applied.to))) { it.lost = it.applied; it.applied = null; it.verdict = ""; it.err = "전에 적용했지만 지금 문서엔 없음(💾 저장 전에 닫혔나?) — [기록대로 다시 적용]"; }
+    else if (it.lost && m && (m.latex || "").includes(it.lost.to)) { it.applied = it.lost; delete it.lost; it.verdict = "반영 완료"; it.err = ""; }
+  }
+}
 window.__eyeOpen = ({ from = 1, to = 999 } = {}) => {
   const s = (window.__kitCfg || {}).sel || {};
   if (!s.preview) return "눈검수를 못 씀 — 북마크 '도구'가 옛것(미리보기 손잡이 설정 없음). 북마크를 새로 만들기";
@@ -2864,17 +3001,19 @@ window.__eyeOpen = ({ from = 1, to = 999 } = {}) => {
         S.key = key; S.items = eyeLoad(key).map((x) => x.verdict === "아님" ? { ...x, verdict: "현재 맞음" } : x); S.cur = 0; S.zoom = "폭"; S.open = null;
         try { S.log = JSON.parse(localStorage.getItem(key + ":log") || "[]"); } catch (e) { S.log = []; }
         try { S.dropped = JSON.parse(localStorage.getItem(key + ":drop") || "[]"); } catch (e) { S.dropped = []; }
+        try { S.info = JSON.parse(localStorage.getItem(key + ":info") || "null") || {}; } catch (e) { S.info = {}; }
+        try { S.bak = JSON.parse(localStorage.getItem(key + ":bak") || "null"); } catch (e) { S.bak = null; }
+        try { S.orphans = JSON.parse(localStorage.getItem(key + ":orph") || "[]"); } catch (e) { S.orphans = []; }
+        try { S.seen = JSON.parse(localStorage.getItem(key + ":seen") || "[]"); } catch (e) { S.seen = []; }
+        S.aiAt = null;
+        S.docName = window.__eyeDocName || ""; S.fromChrome = S.items.length ? S.info.at || 0 : 0; S.importMsg = ""; S.importPend = null;
         S.start = eyeStart(key, msgs);
         S.next = Math.max(0, ...S.items.map((x) => x.id)) + 1;
         for (const r of window.__eyeRules(msgs)) if (!S.items.some((x) => x.index === r.index && x.from === r.from)) S.items.push({ ...r, id: S.next++, verdict: "", memo: "" });
       }
       S.msgs = msgs; S.where = window.__where(msgs); S.wmm = window.__eyeWmm(msgs);
       S.msg = "조판 규칙 대조"; eyeBar(); await sleep(30); eyeRuleScan();
-      for (const it of S.items) {
-        { const m0 = msgs.find((x) => x.index === it.index); it.where = (m0 && eyeName(m0)) || it.where || ""; }
-        const m = msgs.find((x) => x.index === it.index);
-        if (it.applied && !(m && (m.latex || "").includes(it.applied.to))) { it.applied = null; it.verdict = ""; it.err = "전에 적용했지만 지금 문서엔 없음(저장 전에 닫혔나?) — 다시 적용"; }
-      }
+      eyeFixApplied(msgs);
       const pages = eyePages(), last = Math.min(to, pages.length);
       S.pages = S.pages && S.pages.length === pages.length ? S.pages : new Array(pages.length).fill(null);
       const t0 = Date.now();
@@ -2905,7 +3044,7 @@ window.__eyeRefresh = () => {
       else {
         const old = new Map((S.msgs || []).map((m) => [m.index, m.latex]));
         const changed = msgs.filter((m) => m.latex && old.get(m.index) !== m.latex).map((m) => m.index);
-        S.msgs = msgs; S.where = window.__where(msgs);
+        S.msgs = msgs; S.where = window.__where(msgs); eyeFixApplied(msgs);
         if (changed.length) {
           for (const it of S.items) if (changed.includes(it.index)) { it.outside = true; it._ba = it._baK = null; }
           eyeRuleScan();
@@ -2921,11 +3060,24 @@ window.__eyeRefresh = () => {
   })();
   return "started";
 };
+const eyeMarkSeen = (k) => { const S = window.__eyeS, p = S.pages && S.pages[k]; if (!p) return;
+  const seen = new Set(S.seen || []); for (const b of p.boxes) { const w = S.where[b.index]; if (w) seen.add(w); }
+  if (seen.size !== (S.seen || []).length) { S.seen = [...seen]; eyeSave(); } };
+const eyeLeftPages = () => { const S = window.__eyeS, seen = new Set(S.seen || []);
+  return (S.pages || []).map((p, i) => p && p.boxes.some((b) => S.where[b.index] && !seen.has(S.where[b.index])) ? i + 1 : 0).filter(Boolean); };
+const eyeRanges = (L) => L.reduce((a, n) => { const t = a[a.length - 1]; if (t && t[1] === n - 1) t[1] = n; else a.push([n, n]); return a; }, []).map(([a, b]) => a === b ? `${a}` : `${a}~${b}`).join(", ");
+window.__eyeLeft = () => { const S = window.__eyeS; if (!S || !S.pages) return "먼저 __eyeOpen()";
+  const L = eyeLeftPages(); if (!(S.seen || []).length) return `아직 본 쪽 없음 — 1쪽부터(전체 ${S.pages.length}쪽)`;
+  return L.length ? `남은 쪽 ${eyeRanges(L)}(${L.length}/${S.pages.length}) — 그 쪽만 본다. 이미 본 쪽은 건너뛰기` : "다 봄 — 사람에게 카드 판정을 부탁"; };
 window.__eyePage = (n, zoom) => { const S = window.__eyeS; if (!S || !S.pages) return "먼저 __eyeOpen()";
-  S.cur = Math.max(0, Math.min(S.pages.length - 1, n - 1)); if (zoom) S.zoom = zoom; eyeUI(); eyeShow(); eyeCards();
+  const prev = S.cur, k = Math.max(0, Math.min(S.pages.length - 1, n - 1));
+  if (S.aiAt === prev && k === prev + 1) eyeMarkSeen(prev);
+  S.cur = k; S.aiAt = k; if (zoom) S.zoom = zoom; eyeUI(); eyeShow(); eyeCards();
   const p = S.pages[S.cur]; return p ? `${S.cur + 1} / ${S.pages.length}쪽 · 상자 ${p.boxes.length}개 · 번호 ${eyeNos(p).join(" ")}` : "이 쪽 그림이 아직 없음"; };
 window.__eyeTo = (k) => { const v = document.getElementById("__eyeView"); if (!v) return 0;
-  v.scrollTop = k === 1 ? 0 : k === 2 ? (v.scrollHeight - v.clientHeight) / 2 : k === 3 ? v.scrollHeight : k; return Math.round(v.scrollTop); };
+  v.scrollTop = k === 1 ? 0 : k === 2 ? (v.scrollHeight - v.clientHeight) / 2 : k === 3 ? v.scrollHeight : k;
+  const S = window.__eyeS; if (k === 3 && S && S.aiAt === S.cur) eyeMarkSeen(S.cur);
+  return Math.round(v.scrollTop); };
 window.__eyeLatex = (no, part) => { const m = eyeFind({ no, part }); return m ? window.__show(`${eyeName(m)}\n${m.latex}`) : "그 번호 없음"; };
 window.__eyeAdd = (o) => {
   const S = window.__eyeS; if (!S || !S.msgs) return "먼저 __eyeOpen()";
@@ -3038,11 +3190,11 @@ async function eyePick(index) {
     tgt.dispatchEvent(new (t.startsWith("pointer") ? PointerEvent : MouseEvent)(t, { bubbles: true, cancelable: true, ctrlKey: true, clientX: x, clientY: y, button: 0, buttons: t.endsWith("down") ? 1 : 0 }));
   await sleep(700);
 }
-window.__eyeApply = async (id, { mine, whole, how } = {}) => {
+window.__eyeApply = async (id, { mine, whole, how, pair } = {}) => {
   const S = window.__eyeS, it = S.items.find((x) => x.id === id); if (!it) return "카드 없음";
   S.msgs = (await window.__K.exportRendered()).messages;
   const cur = (S.msgs.find((x) => x.index === it.index) || {}).latex || "";
-  const from = whole != null ? cur : it.from, to = whole != null ? whole : mine != null ? mine : it.to;
+  const from = pair ? pair[0] : whole != null ? cur : it.from, to = pair ? pair[1] : whole != null ? whole : mine != null ? mine : it.to;
   if (!from || !to || from === to) return "고칠 글이 없음 — '내가 고친 것'에서 고치거나 판정을 '고쳐줘'로";
   const t = await window.__eyeTry(S.msgs, it.index, from, to);
   if (t.block) { it.err = "막음 — " + t.block; eyeCards(); return "막음: " + t.block; }
@@ -3051,7 +3203,7 @@ window.__eyeApply = async (id, { mine, whole, how } = {}) => {
   const after = (await window.__K.exportRendered()).messages.find((x) => x.index === it.index);
   if (!after || !after.latex.includes(to) || after.latex === cur) { it.err = "반영 안 됨: " + h; eyeCards(); return it.err; }
   how = how || (whole != null || mine != null ? "직접" : it.plan ? "고쳐줘 처리" : "추천대로");
-  it.applied = { from, to, how, mine: how !== "추천대로", at: new Date().toISOString() }; it.verdict = "반영 완료"; it.err = ""; it.outside = false;
+  it.applied = { from, to, how, mine: how !== "추천대로", at: new Date().toISOString() }; it.verdict = "반영 완료"; it.err = ""; it.outside = false; delete it.lost; delete it.stale;
   (S.log = S.log || []).push({ act: "적용", id, where: it.where, index: it.index, how, from, to, at: it.applied.at });
   if (how === "직접") delete S.mine[id];
   S.msgs = (await window.__K.exportRendered()).messages; eyeRuleScan(); eyeSave();
@@ -3193,17 +3345,23 @@ function eyeUI() {
   ov.innerHTML = `<div class="bar"><b>👁 눈검수</b><span id="__eyeFile"></span><span id="__eyeMsg" class="note"></span><span class="sp"></span>
   <span id="__eyeToast" class="toast" role="status"></span><span id="__eyeCnt" class="note"></span>
   <button class="btn ghost" data-a="redo" type="button" title="문서를 다시 읽고 쪽 그림을 전부 새로 뽑음 · 자동 검사도 다시(찾은 것·판정·메모는 남음, AI 가 다시 보는 건 아님)">쪽 그림 새로 뽑기</button>
-  <button class="btn ghost" data-a="rec" type="button" title="켰을 때·지금 JSON(그림 뺀 LaTeX 판) + 찾은 것·판정·메모·적용 기록을 파일 하나로 내려받기 — 관리자에게 전달">관리자용 기록 저장</button>
+  <button class="btn ghost" data-a="rec" type="button" title="찾은 것·판정·메모·적용 기록 + 켰을 때·지금 문서(그림 뺀 LaTeX)를 파일 하나로 내려받기 — 나중에 [기록 불러오기]로 이어서 · 관리자에게 전달도 이 파일">기록 저장</button>
+  <button class="btn ghost" data-a="load" type="button" title="저장해 둔 눈검수 기록 파일을 골라 이어서 하기 — 문서(💾 JSON)를 먼저 불러온 뒤. 짝은 파일 이름이 아니라 내용으로 맞춤">기록 불러오기</button><input type="file" id="__eyeRecIn" accept=".json,application/json" hidden>
   <button class="btn" data-a="copy" type="button" title="찾은 것 · 판정 · 메모를 글로 복사 — 메신저나 AI 대화에 붙여 넣기">결과 글로 복사</button>
   <button class="btn ghost" data-a="help" type="button" title="눈검수 순서 · AI 에게 할 말">? 사용법</button>
   <button class="x" data-a="close" type="button" title="닫기 — 찾은 것·판정은 남음(오른쪽 아래 [👁 눈검수]로 다시 열기)">✕</button></div>
-<div id="__eyeNext" class="next"></div>
+<div id="__eyeNext" class="next"></div><div id="__eyeImp" class="next" hidden></div>
 <div id="__eyeHelp" class="hlp" hidden><b>눈검수 순서</b> — 크롬 AI 대화창에 할 말은 "따옴표"
 <ol><li>크롬 AI 에게 <b>"눈검수 해줘"</b> → 쪽 그림을 보고 이상한 곳을 오른쪽 카드로 올림</li>
 <li>카드를 눌러 전/후 그림 보고 판정 — <b>[조판 규칙대로 고치기]·[이대로 적용]</b>(바로 고침) · <b>현재 맞음</b>(지금이 맞음) · <b>고쳐줘</b>(어떻게 고칠지 메모) · <b>보류</b>(모르겠음, 메모)</li>
 <li>고쳐줘가 있으면 AI 에게 <b>"고쳐줘 처리해"</b> → 메모대로 고칠 안이 카드에 'AI 고칠 안'으로 뜸</li>
 <li>전/후 그림이 괜찮으면 카드의 [이대로 적용] 또는 AI 에게 <b>"괜찮아, 적용해"</b> · 아니면 메모를 고쳐 다시 "고쳐줘 처리해"</li>
-<li>다 끝나면 💾 저장 → [관리자용 기록 저장] → 내려받은 파일을 관리자에게(작업 스레드에 올리기)</li></ol>
+<li>다 끝나면 💾 저장 → [기록 저장] → 내려받은 파일을 관리자에게(작업 스레드에 올리기)</li></ol>
+<b>멈췄다 이어서 하기</b><ol><li>멈출 때: 💾 저장(문서) → [기록 저장](눈검수 기록 파일 — 💾 처럼 저장 창이 떠요. 문서 파일과 같은 폴더에)</li>
+<li>이어서 할 때: 문서 JSON 불러오기 → 도구 북마크 → [👁 눈검수] → [기록 불러오기] → 기록 파일 고르기</li>
+<li>같은 크롬에서 새로고침만 했으면 불러오기 없이 이어져요(위에 '이 크롬에 남은 기록'). 남에게 받은 기록도 같은 방법</li>
+<li>AI 가 보다가 끊겼으면 '지금 할 일' 줄에 안 본 쪽이 나와요 → 크롬 AI 에게 <b>"이어서 눈검수 해줘"</b>(본 쪽은 건너뜀)</li></ol>
+<span class="note">짝은 파일 이름이 아니라 내용으로 맞춰요(다른 이름으로 저장해도 됨) · 그 사이 바뀐 자리는 카드에 '원문 바뀜' · 💾 안 하고 닫아 적용이 빠졌으면 [기록대로 다시 적용] · 불러오기 전 기록은 [불러오기 전으로]</span><br>
 <span class="note">적용은 Ctrl+Z 로 되돌릴 수 있어요 · ✕ 로 닫아도 카드는 남아요 · 화면에서 직접 고친 뒤 [👁 눈검수]를 다시 누르면 바뀐 쪽만 새로 뽑아요</span></div>
 <div class="main"><div class="mid"><div class="midtop"><div class="pages" id="__eyePages"></div><span class="sp"></span>
   <div class="zoom"><button data-z="-1" type="button" title="축소">−</button><span class="z" id="__eyeZ"></span><button data-z="1" type="button" title="확대">+</button>
@@ -3215,7 +3373,10 @@ function eyeUI() {
   document.body.appendChild(ov);
   ov.addEventListener("click", eyeClick);
   ov.addEventListener("input", eyeInput);
-  ov.addEventListener("change", (e) => { const id = +(e.target.dataset.memo || 0); if (id) { const it = window.__eyeS.items.find((x) => x.id === id); if (it) { it.memo = e.target.value; eyeSave(); } } });
+  ov.querySelector("#__eyeRecIn").addEventListener("change", async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return;
+    let r; try { r = await window.__eyeImport(await f.text()); } catch (err) { r = "불러오기 멈춤: " + err.message; }
+    window.__eyeS.importMsg = r; eyeToast(r.slice(0, 80)); eyeBar(); });
+  ov.addEventListener("change", (e) => { const id = +(e.target.dataset.memo || 0); if (id) { const it = window.__eyeS.items.find((x) => x.id === id); if (it) { it.memo = e.target.value; eyeSave(); eyeBar(); } } });
   const view = ov.querySelector("#__eyeView"), S = window.__eyeS;
   view.addEventListener("wheel", (e) => { if (!e.ctrlKey) return; e.preventDefault(); S.zoom = Math.max(0.2, Math.min(4, eyeScale() * (e.deltaY < 0 ? 1.1 : 0.9))); eyeShow(); }, { passive: false });
   const sl = ov.querySelector(".split");
@@ -3233,17 +3394,32 @@ function eyeBar() {
   const bz = document.getElementById("__eyeBusy");
   if (bz) { bz.classList.toggle("on", !!S.busy); document.getElementById("__eyeBusyMsg").textContent = S.msg || "";
     document.getElementById("__eyeBusyBar").style.width = S.prog ? (S.prog[0] / S.prog[1] * 100) + "%" : "8%"; }
-  document.getElementById("__eyeFile").textContent = S.where ? `${(S.msgs.find((m) => m.type === "meta") || {}).part || ""} · ${S.pages ? S.pages.length : 0}쪽` : "";
+  const hm = (t) => { const d = new Date(t), p2 = (n) => String(n).padStart(2, "0"); return `${d.getMonth() + 1}-${d.getDate()} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
+  const mine = L.some((x) => x.src !== "규칙" || x.verdict || x.memo || x.applied) || (S.log || []).length;
+  const unsaved = mine && S.info && eyeSig(S) !== S.info.fileSig;
+  document.getElementById("__eyeFile").innerHTML = S.where ? esc(`${(S.msgs.find((m) => m.type === "meta") || {}).part || ""} · ${S.pages ? S.pages.length : 0}쪽`)
+    + (S.fromChrome ? ` <span class="note" title="새로고침 전 이 크롬에 자동으로 남은 기록으로 이어감">· 이 크롬에 남은 기록(${hm(S.fromChrome)})</span>` : "")
+    + (unsaved ? ` <span class="note todo" title="[기록 저장]을 누르면 파일로 남아요 — 다른 PC·다른 사람이 이어서 할 수 있게">· 기록 파일 저장 안 함</span>` : "") : "";
+  const imp = document.getElementById("__eyeImp"), lost = L.filter((x) => x.lost).length, orph = (S.orphans || []).length;
+  if (imp) { const parts = [];
+    if (S.importMsg) parts.push(esc(S.importMsg));
+    if (S.importPend) parts.push(`<button class="s" type="button" data-a="force">그래도 불러오기</button>`);
+    if (lost) parts.push(`적용했지만 이 문서엔 없는 카드 ${lost} <button class="s go" type="button" data-a="reapply" title="카드마다 상자를 골라 기록대로 다시 고치고 렌더로 확인(하나에 몇 초)">기록대로 다시 적용</button>`);
+    if (orph) parts.push(`<span title="__eyeOrphans()">못 붙인 카드 ${orph}(자리를 못 찾음 — 메모·판정은 기록 파일에 남아 있음)</span>`);
+    if (S.bak) parts.push(`<button class="s" type="button" data-a="imundo" title="불러오기 전 이 크롬의 기록으로 돌리기">불러오기 전으로</button>`);
+    imp.hidden = !parts.length; imp.innerHTML = parts.join(" · "); }
   document.getElementById("__eyeCnt").innerHTML = N ? `<span class="prog"><i style="width:${j / N * 100}%"></i></span> 판정 ${j} / ${N} · 끝남 ${n}`
     + (fx ? ` · <b class="todo">고쳐줘 ${fx}</b>` : "") + (hold ? ` · 보류 ${hold}` : "") : "";
   const nd = (S.dropped || []).length; if (nd) document.getElementById("__eyeCnt").innerHTML += ` · <span class="note" title="AI 가 올렸지만 조판 규칙대로·화질·렌더 동작이라 뺀 것 — __eyeDropped()">규칙대로라 뺀 것 ${nd}</span>`;
   const plan = L.filter((x) => x.plan && !x.applied && x.verdict === "고쳐줘").length;
+  const seenN = (S.seen || []).length, left = S.pages ? eyeLeftPages() : [], aiN = L.filter((x) => x.src !== "규칙").length;
   const [msg, say] = S.busy ? ["쪽 그림을 뽑는 중 — 끝날 때까지 기다리기", ""]
-    : !N ? ["① 크롬 AI 에게 \"눈검수 해줘\"라고 말하기 — 이상한 곳을 찾아 오른쪽 카드로 올려요", "눈검수 해줘"]
+    : !seenN && !aiN ? ["① 크롬 AI 에게 \"눈검수 해줘\"라고 말하기 — 이상한 곳을 찾아 오른쪽 카드로 올려요" + (N ? ` (자동 검사 카드 ${N}개는 먼저 판정해도 돼요)` : ""), "눈검수 해줘"]
+    : seenN && left.length ? [`① AI 가 아직 안 본 쪽 ${eyeRanges(left)} — 크롬 AI 에게 "이어서 눈검수 해줘"(본 쪽은 건너뛰어요) · 올라온 카드는 그동안 판정해도 돼요`, "이어서 눈검수 해줘"]
     : j < N ? [`② 카드를 하나씩 눌러 전/후 그림을 보고 판정하기 — 남은 카드 ${N - j}개 (적용 · 현재 맞음 · 고쳐줘 + 메모 · 보류)`, ""]
     : plan ? [`④ AI 가 고칠 안을 올렸어요(파란 'AI 고칠 안' 카드 ${plan}개) — 전/후 그림을 보고 [이대로 적용]을 누르거나 AI 에게 "괜찮아, 적용해"`, "괜찮아, 적용해"]
     : fx ? [`③ 고쳐줘 ${fx}개 — 크롬 AI 에게 "고쳐줘 처리해"라고 말하기(메모대로 고칠 안을 카드에 올려요)`, "고쳐줘 처리해"]
-    : [`⑤ 다 했어요 — 💾 저장 후 [관리자용 기록 저장] → 내려받은 파일을 관리자에게(작업 스레드에 올리기)${hold ? ` (보류 ${hold}개는 메모와 함께 관리자에게 넘어가요)` : ""}`, ""];
+    : [`⑤ 다 했어요 — 💾 저장 후 [기록 저장] → 내려받은 파일을 관리자에게(작업 스레드에 올리기)${hold ? ` (보류 ${hold}개는 메모와 함께 관리자에게 넘어가요)` : ""}`, ""];
   document.getElementById("__eyeNext").innerHTML = `<b>지금 할 일</b> ${esc(msg)}${say ? ` <button class="s" type="button" data-a="say" data-say="${esc(say)}" title="크롬 AI 대화창에 붙여 넣을 말 복사">"${esc(say)}" 복사</button>` : ""}`;
   const has = new Set((S.items || []).map((x) => eyePageOf(x.index)));
   document.getElementById("__eyePages").innerHTML = (S.pages || []).map((p, i) => `<span data-page="${i}" class="${i === S.cur ? "on " : ""}${has.has(i) ? "has " : ""}${p ? "" : "wait"}">${i + 1}</span>`).join("");
@@ -3343,7 +3519,7 @@ const eyeOkRule = (it, lx) => {
 };
 function eyeCard(it) {
   const S = window.__eyeS, on = S.open === it.id, st = eyeStCls(it), m = eyeMsg(it), lx = m.latex || "";
-  const head = `<div class="hd" data-id="${it.id}"><div class="top">${st === "done" ? '<span class="tick">✓</span>' : `<span class="num">${it.id}</span>`}<span class="pill ${eyeK(it)}">${esc(it.kind)}</span><span class="where">${esc(it.where)}</span>${eyeWho(it)}${it.verdict ? `<span class="chip s-${st}">${esc(it.verdict)}</span>` : ""}${it.outside ? '<span class="chip out">밖에서 고쳐짐</span>' : ""}${it.plan && !it.applied ? '<span class="chip plan">AI 고칠 안</span>' : ""}</div><div class="what">${esc(it.what)}</div></div>`;
+  const head = `<div class="hd" data-id="${it.id}"><div class="top">${st === "done" ? '<span class="tick">✓</span>' : `<span class="num">${it.id}</span>`}<span class="pill ${eyeK(it)}">${esc(it.kind)}</span><span class="where">${esc(it.where)}</span>${eyeWho(it)}${it.verdict ? `<span class="chip s-${st}">${esc(it.verdict)}</span>` : ""}${it.outside ? '<span class="chip out">밖에서 고쳐짐</span>' : ""}${it.stale ? '<span class="chip out" title="기록을 저장한 뒤 이 자리 원문이 바뀜 — 지금 원문을 보고 다시 판정">원문 바뀜</span>' : ""}${it.lost ? '<span class="chip out" title="기록엔 적용했지만 이 문서엔 없음(💾 저장 전에 닫혔나?)">적용 빠짐</span>' : ""}${it.plan && !it.applied ? '<span class="chip plan">AI 고칠 안</span>' : ""}</div><div class="what">${esc(it.what)}</div></div>`;
   if (!on) return `<div class="card${st === "done" ? " done" : ""}">${head}</div>`;
   const R = eyeRuleOf(it), has = R.chk.length || R.line.length, big = R.fix ? "rule" : it.to && !it.applied ? "ai" : "mine";
   const key = it.applied ? it.applied.to : it.from, at = key && key.length < 400 && !(it.applied && it.applied.how && it.applied.how !== "추천대로") ? lx.indexOf(key) : -1;
@@ -3380,6 +3556,8 @@ function eyeCard(it) {
     <div class="problem ${eyeK(it)}"><div><div class="lab">무엇이 문제인가</div><div class="q">${esc(it.what)}</div></div>
       ${it.fix ? `<div><div class="lab">고칠 방법 ${eyeWho(it)}</div><div class="fx">${esc(it.fix)}</div></div>` : ""}</div>
     ${it.outside ? `<div class="er">팝업 밖에서 이 청크가 고쳐졌어요 — 그림·원문은 새로 읽은 것</div>` : ""}
+    ${it.stale ? `<div class="er">기록을 저장한 뒤 이 자리가 바뀌었어요 — 그때 원문: <code>${esc(it.stale.from || "")}</code>${it.stale.to ? ` → 고칠 꼴: <code>${esc(it.stale.to)}</code>` : ""}. 지금 원문은 [전체 LaTeX]에서 보고 다시 판정하세요</div>` : ""}
+    ${it.lost ? `<div class="tools"><button class="btn" type="button" data-apply="lost" data-id="${it.id}" title="${esc(it.lost.how || "")} — 기록에 남은 대로 다시 고침(렌더 확인)">기록대로 다시 적용</button><span class="note">기록엔 적용(${esc(it.lost.how || "")})했지만 이 문서엔 없어요</span></div>` : ""}
     ${ruleBox}
     ${noRule ? memo(true) : ""}
     ${part ? `<div><div class="k">원문 LaTeX (해당 부분)<button class="s" type="button" data-copy="src" data-id="${it.id}">복사</button></div><code>${esc(part)}</code></div>` : ""}
@@ -3403,7 +3581,11 @@ async function eyeClick(e) {
   if (a === "close") { document.getElementById("__eyePop").style.display = "none"; return; }
   if (a === "help") { const h = document.getElementById("__eyeHelp"); h.hidden = !h.hidden; return; }
   if (a === "say") { try { await navigator.clipboard.writeText(d.say); eyeToast(`"${d.say}" 복사함 — 크롬 AI 대화창에 붙여 넣기`); } catch (err) { eyeToast(`복사가 막혀 있음 — 직접 "${d.say}" 라고 쓰기`); } return; }
-  if (a === "rec") { eyeToast("기록 묶는 중…"); eyeToast("내려받음: " + await window.__eyeRecord()); return; }
+  if (a === "rec") { eyeToast("기록 묶는 중…"); eyeToast("기록 저장: " + await window.__eyeRecord()); return; }
+  if (a === "load") { if (S.busy) { eyeToast("쪽 그림을 다 뽑은 뒤에 불러오기"); return; } document.getElementById("__eyeRecIn").click(); return; }
+  if (a === "force") { const r = S.importPend ? await window.__eyeImport(S.importPend, { force: true }) : "불러올 것 없음"; S.importMsg = r; eyeToast(r.slice(0, 80)); eyeBar(); return; }
+  if (a === "imundo") { eyeToast(window.__eyeImportUndo()); return; }
+  if (a === "reapply") { eyeToast(window.__eyeReapply()); return; }
   if (a === "copy") { eyeToast(await window.__eyeCopy() === "복사함" ? "결과 글 복사함" : "복사가 막혀 있음 — __eyeText() 결과를 쓰기"); return; }
   if (a === "redo") { S.pages = null; S.key = null; window.__eyeOpen(); return; }
   if (t.dataset.page != null) { S.cur = +t.dataset.page; eyeShow(); return; }
@@ -3427,7 +3609,8 @@ async function eyeClick(e) {
   let r = "";
   try {
     const fx = (S.fixTo || {})[it.index];
-    if (t.dataset.apply === "rule") r = fx ? await window.__eyeApply(id, { whole: fx.latex, how: "조판 규칙대로" }) : "조판 규칙대로 고칠 것이 없음";
+    if (t.dataset.apply === "lost") r = it.lost ? await window.__eyeApply(id, { pair: [it.lost.from, it.lost.to], how: it.lost.how }) : "다시 적용할 것 없음";
+    else if (t.dataset.apply === "rule") r = fx ? await window.__eyeApply(id, { whole: fx.latex, how: "조판 규칙대로" }) : "조판 규칙대로 고칠 것이 없음";
     else if (t.dataset.apply) r = await window.__eyeApply(id, /mine/.test(t.dataset.apply) ? { whole: S.mine[id], how: "직접" } : {});
     else if (t.dataset.undo) r = await window.__eyeUndo(id);
   } catch (err) { r = "멈춤: " + err.message; it.err = r; }
