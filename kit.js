@@ -1,5 +1,5 @@
-// page-kit v2026.11.01-1331
-window.__kitBuilt = "v2026.11.01-1331";
+// page-kit v2026.11.05-1103
+window.__kitBuilt = "v2026.11.05-1103";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -360,6 +360,105 @@ window.__fixCW30 = (msgs, { apply = false, start } = {}) => {
   }
   return out;
 };
+window.__CW33_W = "\\sffamily\\bfseries\\fontsize{8pt}{0pt}\\selectfont\\color[HTML]{3057B9}";
+window.__cw33Blue = (hex) => {
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255), mx = Math.max(r, g, b), d = mx - Math.min(r, g, b);
+  if (mx < 0.5 || d / mx < 0.4 || mx !== b) return false;
+  const h = 60 * (4 + (r - g) / d);
+  return h >= 200 && h <= 260;
+};
+window.__cw33 = (lx) => {
+  let n = 0;
+  const grp = (s, i) => { let d = 0; for (let j = i; j < s.length; j++) { if (s[j] === "\\") { j++; continue; } if (s[j] === "{") d++; else if (s[j] === "}" && --d === 0) return j + 1; } return -1; };
+  const BLUE = /^\{\\color\[HTML\]\{([0-9A-Fa-f]{6})\}/, LABEL = /^\s*\[(?:예시|참고|예)\]\s*$/;
+  lx = lx.replace(/\{\\color\[HTML\]\{([0-9A-Fa-f]{6})\}(\s*)(\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\})([\s\S]*?)(\\end\{hangblock\})\}/g,
+    (all, hex, sp, head, body, tail) => body.includes("\\begin{hangblock}") || !window.__cw33Blue(hex) ? all : sp + head + `{\\color[HTML]{${hex}}` + body + "}" + tail);
+  const SP = /^(?:\\hspace\*\{[^}]*\}|\\qquad|\\quad|\\tab|\\hblinebreak|~|\s)+/;
+  const runs = (s) => {
+    let out = "", cur = "";
+    const flush = () => { if (cur.trim()) out += `{${window.__CW33_W}${cur.trim()}}` + (cur.match(/\s+$/) ? " " : ""); else out += cur; cur = ""; };
+    for (let i = 0; i < s.length;) {
+      const sp = s.slice(i).match(SP);
+      if (sp && !/^\s+$/.test(sp[0])) { flush(); out += sp[0]; i += sp[0].length; continue; }
+      if (s[i] === "$") { const j = s.indexOf("$", i + 1), x = s.slice(i + 1, j); cur += x.includes("\\boldsymbol") ? `$${x}$` : `\${\\boldsymbol{${x}}}$`; i = j + 1; continue; }
+      cur += s[i++];
+    }
+    flush();
+    return out;
+  };
+  const out = lx.replace(/(\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\})([\s\S]*?)(\\end\{hangblock\})/g, (all, head, body, tail, off, whole) => {
+    const items = [];
+    for (let i = 0; i < body.length; i++) {
+      if (body[i] === "\\") { i++; while (/[a-zA-Z*]/.test(body[i + 1] || "")) i++; continue; }
+      if (body[i] !== "{") continue;
+      const j = grp(body, i); if (j < 0) return all;
+      const g = body.slice(i, j), c = g.match(BLUE);
+      items.push([i, j, !!(c && window.__cw33Blue(c[1]) && !LABEL.test(g.slice(c[0].length, -1)))]);
+      i = j - 1;
+    }
+    const blue = items.filter((x) => x[2]);
+    if (!blue.length) return all;
+    let s = blue[0][0], e = blue[blue.length - 1][1];
+    const rest = body.slice(e).replace(/\{\\fontsize\{[^}]*\}\{[^}]*\}\\selectfont\s*([^{}]*)\}/g, "$1");
+    if (/^[\s↴⤶⤷↵→]*$/.test(rest) && /\S/.test(rest)) e = body.length;
+    let flat = "", at = s;
+    for (const [i, j] of items.filter((x) => x[0] >= s && x[1] <= e)) {
+      const g = body.slice(i, j), c = g.match(BLUE) || g.match(/^\{\\fontsize\{[^}]*\}\{[^}]*\}\\selectfont\s*/);
+      flat += body.slice(at, i) + (c ? g.slice(c[0].length, -1) : g); at = j;
+    }
+    flat += body.slice(at, e);
+    let pre = body.slice(0, s);
+    const alone = !pre.replace(/\\bfseries|\\sffamily|\\hspace\*\{[^}]*\}|\\tab|\\qquad|~|\s/g, "") && !body.slice(e).trim();
+    if (alone) pre = pre.replace(/\\bfseries\s*/, "");
+    n++;
+    const above = (whole.slice(0, off).match(/\\begin\{hangblock\}(?![\s\S]*\\begin\{hangblock\})[\s\S]*$/) || [""])[0];
+    if (alone && !above.includes("\\underline")) {
+      const text = flat.replace(/\\hspace\*\{[^}]*\}|\\tab|\\qquad|\\quad|\\hblinebreak|~/g, " ").replace(/\s+/g, " ").trim();
+      return head.replace(/\{[^}]*\}\{([^}]*)\}$/, "{0mm}{$1}") + `\\hbright{${runs(text)}}` + tail;
+    }
+    return head + pre + runs(flat) + body.slice(e) + tail;
+  });
+  return { lx: n ? out : lx, n };
+};
+window.__fixCW33 = (msgs, { apply = false, start } = {}) => {
+  if (window.__K.key(msgs) !== "A") return [];
+  const W = window.__where ? window.__where(msgs, { start }) : {};
+  const out = [];
+  for (const m of msgs) {
+    if (!["contents", "contents_D1", "conceptUp"].includes(m.type) || !m.latex) continue;
+    const r = window.__cw33(m.latex);
+    if (!r.n) continue;
+    out.push({ where: W[m.index] || "?", index: m.index, rule: "CW33", n: r.n, what: `파란 꾸밈 ${r.n}문단 → 고딕 굵게 8pt 3057B9` });
+    if (apply) { m.latex = r.lx; window.__clearRender && window.__clearRender(m); }
+  }
+  return out;
+};
+window.__CW34 = /\{\\color\[HTML\]\{([0-9A-Fa-f]{6})\}\s*(\$[^$]*\$)\s*\}/g;
+window.__cw34Keep = (hex, type) => {
+  if (!["contents", "contents_D1", "conceptUp"].includes(type)) return false;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255), mx = Math.max(r, g, b), d = mx - Math.min(r, g, b);
+  if (!d || mx !== r) return false;
+  const h = 60 * (((g - b) / d + 6) % 6);
+  return h >= 12 && h <= 35 && d / mx >= 0.45 && mx >= 0.8;
+};
+window.__cw34 = (lx, type) => {
+  let n = 0;
+  const out = lx.replace(window.__CW34, (all, hex, math) => window.__cw34Keep(hex, type) ? all : (n++, math));
+  return { lx: out, n };
+};
+window.__fixCW34 = (msgs, { apply = false, start } = {}) => {
+  if (window.__K.key(msgs) !== "A") return [];
+  const W = window.__where ? window.__where(msgs, { start }) : {};
+  const out = [];
+  for (const m of msgs) {
+    if (!m.latex) continue;
+    const r = window.__cw34(m.latex, m.type);
+    if (!r.n) continue;
+    out.push({ where: W[m.index] || "?", index: m.index, rule: "CW34", n: r.n, what: `색 입힌 수식 ${r.n}개 → 검정` });
+    if (apply) { m.latex = r.lx; window.__clearRender && window.__clearRender(m); }
+  }
+  return out;
+};
 window.__fixCW14 = (msgs, { apply = false, start } = {}) => {
   if (window.__K.key(msgs) !== "A") return [];
   const W = window.__where ? window.__where(msgs, { start }) : {};
@@ -462,7 +561,7 @@ window.__fixA = (msgs, { start, apply = false } = {}) => {
   const fix = window.__fixCW15(msgs, { start }).map((x) => ({ ...x }));
   const work = apply ? window.__fixCW15(msgs, { apply: true, start }) : msgs;
   for (const [rule, f] of [["CW05", window.__fixT2], ["CW17", window.__fixCW17], ["CW18", window.__fixCW18], ["CW19", window.__fixCW19], ["CW25", window.__fixDiv], ["CW12", window.__fixColon],
-    ["CW27", window.__fixCW27], ["CW28", window.__fixCW28], ["CW30", window.__fixCW30], ["CW14", window.__fixCW14], ["CW31", window.__fixCW31]])
+    ["CW27", window.__fixCW27], ["CW28", window.__fixCW28], ["CW30", window.__fixCW30], ["CW14", window.__fixCW14], ["CW31", window.__fixCW31], ["CW33", window.__fixCW33], ["CW34", window.__fixCW34]])
     for (const x of f(work, { apply, start })) fix.push({ ...x, rule: x.rule || rule });
   return { fix, msgs: work };
 };
@@ -687,6 +786,8 @@ window.__check = (msgs, { start } = {}) => {
       if ((m.type === "contents_D1" || m.type === "analysis_D1") && window.__cw15([m]).out.length) add(m, "CW15", "예시·참고 상자 내어쓰기에 [참고] 글자 폭이 남음 (__fixCW15)", lx.slice(lx.indexOf("\\begin{hangblock}")).slice(0, 60));
       if (lx.includes("\\begin{cases}") && window.__cw28(lx) !== lx) add(m, "CW28", "연립 ㉠㉡ 꼬리 → 한 칸 + \\hbright (__fixCW28)", lx.slice(lx.indexOf("\\begin{cases}")).slice(0, 90));
       for (const a of lx.matchAll(window.__CW27)) add(m, "CW27", "조합 기호 첨자 앞 \\, 지움 (__fixCW27)", a[0]);
+      if (["contents", "contents_D1", "conceptUp"].includes(m.type) && window.__cw33(lx).n) { const i = ([...lx.matchAll(/\{\\color\[HTML\]\{([0-9A-Fa-f]{6})\}/g)].find((a) => window.__cw33Blue(a[1])) || { index: 0 }).index; add(m, "CW33", "개념 파란 꾸밈 → 고딕 굵게 8pt 3057B9 (__fixCW33)", lx.slice(Math.max(0, i), i + 70)); }
+      for (const a of lx.matchAll(window.__CW34)) if (!window.__cw34Keep(a[1], m.type)) add(m, "CW34", `색 입힌 수식 ${a[1]} → 검정 (__fixCW34)`, a[0].slice(0, 70));
       for (const a of lx.matchAll(window.__CW31)) add(m, "CW31", "⋯㉠ 꼬리 + 채점 꼬리 한 줄 → \\hspace*{D} + \\hbright (__fixCW31 · 렌더로 D)", lx.slice(Math.max(0, a.index - 30), a.index + a[0].length));
       for (const a of lx.matchAll(window.__CW18)) add(m, "CW18", `${a[1]}\\,\\left( → ${a[1]}\\left( (__fixCW18)`, lx.slice(Math.max(0, a.index - 30), a.index + 40));
       for (const a of lx.matchAll(window.__PMAT)) if (__pmatBad(a)) add(m, "CW19", "행렬 꼴(빈 열·~·칸) (__fixCW19)", a[0].slice(0, 80));
@@ -2041,6 +2142,83 @@ window.__vb37Fix = async (m, r, { lib, one }) => {
   }
   return null;
 };
+window.__vbDecoFind = (lx) => {
+  const out = [], W = window.__CW33_W, G = window.__vb;
+  if (!W || !lx.includes(W)) return out;
+  const hbs = [...lx.matchAll(G.HBX)];
+  const grp = (s, i) => { let d = 0; for (let j = i; j < s.length; j++) { if (s[j] === "\\") { j++; continue; } if (s[j] === "{") d++; else if (s[j] === "}" && --d === 0) return j + 1; } return -1; };
+  for (let k = 1; k < hbs.length; k++) {
+    const body = hbs[k][4], labs = [];
+    for (let i = body.indexOf("{" + W); i >= 0; i = body.indexOf("{" + W, i + 1)) { const j = grp(body, i); labs.push(body.slice(i, j)); i = j - 1; }
+    if (!labs.length || body.includes("\\hbright") || labs.reduce((s, l) => s.replace(l, ""), body).replace(/\\hspace\*\{[^}]*\}|\\tab|\\qquad|\\quad|~|\s/g, "")) continue;
+    const prev = hbs[k - 1], unders = [];
+    for (const mm of prev[4].matchAll(/\$[^$]*\$/g)) {
+      for (let i = mm[0].indexOf("{\\underline{"); i >= 0; i = mm[0].indexOf("{\\underline{", i + 1)) {
+        const j = grp(mm[0], i);
+        unders.push({ at: prev.index + prev[0].indexOf(prev[4]) + mm.index, math: mm[0], i, j });
+        i = j - 1;
+      }
+    }
+    if (unders.length !== labs.length) continue;
+    out.push({ prev, deco: hbs[k], head: hbs[k][0].slice(0, hbs[k][0].length - body.length - "\\end{hangblock}".length), labs, unders });
+  }
+  return out;
+};
+window.__vbDecoFix = async (m, r, { lib, one }) => {
+  const f = window.__vbDecoFind(m.latex)[0];
+  if (!f || !r || !r.pdf) return null;
+  const hang = (t) => t.replace(/[^가-힣]/g, "");
+  const decoRow = (R) => R.rows.findIndex((w) => hang(w.text).includes(hang(f.labs[0]).slice(0, 3)));
+  const clusters = (row) => {
+    const out = [];
+    for (const w of row.w) { const c = out[out.length - 1]; if (c && w.x0 - c.x1 < 2) c.x1 = Math.max(c.x1, w.x1); else out.push({ x0: w.x0, x1: w.x1 }); }
+    return out;
+  };
+  const U = [];
+  for (const u of f.unders) {
+    const before = u.math.slice(1, u.i), g = u.math.slice(u.i, u.j), after = u.math.slice(u.j, -1);
+    const probe = `$\\hphantom{${before}{}}${g}\\hphantom{{}${after}}$`;
+    const lx = m.latex.slice(0, u.at) + probe + m.latex.slice(u.at + u.math.length);
+    const t = await one({ ...m, latex: lx });
+    if (!t || !t.pdf) return null;
+    const R = await window.__vbRows(lib, t), d = decoRow(R);
+    if (d < 1) return null;
+    const row = R.rows[d - 1];
+    U.push({ x0: row.x0, x1: row.x1 });
+  }
+  const R0 = await window.__vbRows(lib, r), d0 = decoRow(R0);
+  if (d0 < 0) return null;
+  const C0 = clusters(R0.rows[d0]);
+  if (C0.length !== f.labs.length) return null;
+  const wd = C0.map((c) => c.x1 - c.x0);
+  const xs = [];
+  f.labs.forEach((lab, k) => {
+    const s = lab.slice(lab.indexOf("}", lab.indexOf("{3057B9}")) + 1), u = U[k];
+    let x = /[⤶↵↲]\s*\}?$/.test(s.trim()) ? u.x0 - 0.5 - wd[k] : /^\s*[⤷↳]/.test(s) ? u.x0 + 0.3 : (u.x0 + u.x1) / 2 - wd[k] / 2;
+    if (k) x = Math.max(x, xs[k - 1] + wd[k - 1] + 1.5);
+    xs.push(x);
+  });
+  if (C0.every((c, k) => Math.abs(c.x0 - xs[k]) < 0.6)) return { ok: true };
+  const build = (left) => {
+    let body = "", end = left;
+    f.labs.forEach((lab, k) => { body += `\\hspace*{${Math.max(0, xs[k] - end).toFixed(1)}mm}${lab}`; end = xs[k] + wd[k]; });
+    return m.latex.replace(f.deco[0], () => f.head + body + "\\end{hangblock}");
+  };
+  let left = Math.min(...U.map((u) => u.x0), C0[0].x0) - 20, lx = build(left), t = null;
+  for (let pass = 0; pass < 3; pass++) {
+    t = await one({ ...m, latex: lx });
+    if (!t || !t.pdf) return null;
+    const R = await window.__vbRows(lib, t), d = decoRow(R);
+    if (d < 0) return null;
+    const C = clusters(R.rows[d]);
+    if (C.length !== f.labs.length) return null;
+    const err = C[0].x0 - xs[0];
+    if (Math.abs(err) < 0.3 && C.every((c, k) => Math.abs(c.x0 - xs[k]) < 0.6)) break;
+    left += err; lx = build(left);
+    if (pass === 2) t = await one({ ...m, latex: lx });
+  }
+  return { latex: lx, r: t, why: `꾸밈 이름표 ${f.labs.length}개를 밑줄 항에 맞춤(${xs.map((x, k) => `${(x - U[k].x0).toFixed(1)}`).join(" · ")}mm)` };
+};
 window.__vbOrphanRe = /^[)?.,\]}”’]/;
 window.__vbOneCharRe = /^[가-힣][)?.,!”’]*$/;
 window.__vbOrphans = (R) => R.rows.slice(1).map((r, k) => ({ i: k + 1, r })).filter(({ r }) => window.__vbOrphanRe.test(r.text));
@@ -2206,7 +2384,7 @@ window.__fixBRun = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) => 
       if (!isB && window.__K.key(work) !== "A") throw new Error(`업체 모름(meta.textbook=${G.vendor(work) || "없음"})`);
       const pre = isB ? window.__fixB(work, { apply: true, start })
         : { fix: [...window.__fixGW17(work, { apply: true, start }), ...(window.__fixCW31 ? window.__fixCW31(work, { apply: true, start }) : [])],
-          render: work.filter((m) => window.__vbStepBlocks(m, { alignedOnly: true }).some((b) => b.rows.length > 1) || window.__vbDanFind(m, "A") || (m.latex && (window.__vbTailFind(m.latex).length || window.__vbCw31Find(m.latex).length || window.__vbSideFind(m.latex).length))).map((m) => ({ index: m.index })) };
+          render: work.filter((m) => window.__vbStepBlocks(m, { alignedOnly: true }).some((b) => b.rows.length > 1) || window.__vbDanFind(m, "A") || (m.latex && (window.__vbTailFind(m.latex).length || window.__vbCw31Find(m.latex).length || window.__vbSideFind(m.latex).length || window.__vbDecoFind(m.latex).length))).map((m) => ({ index: m.index })) };
       __job.fix.push(...pre.fix);
       __job.left.push(...(pre.ask || []).map((x) => `${x.where} ${x.before} — ${x.what}(사람 확인)`));
       __job.log.push(`렌더 없는 고침 ${pre.fix.length} · 렌더로 볼 곳 ${pre.render.length}${pre.ask && pre.ask.length ? ` · 문장 합칠지 확인 ${pre.ask.length}` : ""}`);
@@ -2226,6 +2404,12 @@ window.__fixBRun = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) => 
         for (let g = 0, f; isB && g < 3 && window.__vb37Cands(m).length && (f = await window.__vb37Fix(m, r, { lib, one })); g++) {
           m.latex = f.latex; window.__clearRender(m); r = f.r;
           __job.fix.push({ where: W[m.index], index: m.index, rule: "GW37", what: `탭으로 민 수식 나열 접힘 → ${f.why}` });
+        }
+        if (!isB && window.__vbDecoFind(m.latex).length) {
+          const f = await window.__vbDecoFix(m, r, { lib, one });
+          if (f && f.ok) {  }
+          else if (f) { m.latex = f.latex; window.__clearRender(m); r = f.r; __job.fix.push({ where: W[m.index], index: m.index, rule: "CW33", what: f.why }); }
+          else __job.left.push(`${W[m.index]} 꾸밈 이름표 자리를 못 잼(사람 확인)`);
         }
         for (let round = 0; round < 2; round++) {
           const R = await window.__vbRows(lib, r);
