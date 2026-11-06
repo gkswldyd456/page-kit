@@ -1,5 +1,5 @@
-// page-kit v2026.11.06-1721
-window.__kitBuilt = "v2026.11.06-1721";
+// page-kit v2026.11.06-1741
+window.__kitBuilt = "v2026.11.06-1741";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -495,33 +495,57 @@ window.__cw50Split = (m) => {
   for (const x of [a, b]) window.__clearRender && window.__clearRender(x);
   return { a, b, num };
 };
-window.__fixCW50 = (msgs, { apply = false, start } = {}) => {
-  if (window.__K.key(msgs) !== "A") return apply ? { msgs, fix: [], left: [] } : { fix: [], left: [] };
+window.__msgSplitRun = (msgs, split, { apply = false, start, rule, left: leftFn } = {}) => {
   const W = window.__where(msgs, { start }), fix = [], left = [], out = [], moved = new Map();
-  let shift = 0;
+  const num = (v) => (typeof v === "string" && /^\d+$/.test(v) ? +v : v);
+  let shift = 0, ctx = { group: false };
   for (const m of msgs) {
-    if (Number.isInteger(m.index)) moved.set(m.index, m.index + shift);
-    const r = window.__cw50Split(m);
-    if (r) {
-      fix.push({ where: W[m.index] || "?", index: m.index, rule: "CW50", what: `한 줄 두 문제 ${(m.attrs || {}).number || "?"} · ${r.num} → 둘째 ${r.num} 를 번호 문제로 나눔(한 줄에 하나씩 놓임, 이 뒤 화면 번호가 하나씩 당겨짐)` });
-      out.push(r.a, r.b); shift++; continue;
-    }
-    if (m.type !== "question" && /explain|explanation|answer/.test(m.type || "") && window.__CW50N.test(m.latex || ""))
-      left.push({ where: W[m.index] || "?", index: m.index, rule: "CW50", what: "해설 안에 둘째 문제 번호가 글로 있음 — 정답·풀이를 사람이 나눠야 함(자동 나눔 안 함)" });
+    if (m.type === "questionTitle") ctx.group = true; else if (/^(title|subtitle|concept)$/.test(m.type || "")) ctx.group = false;
+    const i = num(m.index);
+    if (Number.isInteger(i)) moved.set(i, i + shift);
+    const r = split(m, ctx);
+    if (r) { fix.push({ where: W[m.index] || "?", index: m.index, rule, what: r.what }); out.push(r.a, r.b); shift++; continue; }
+    const l = leftFn && leftFn(m);
+    if (l) left.push({ where: W[m.index] || "?", index: m.index, rule, what: l });
     out.push(m);
   }
   if (!apply) return { fix, left };
   if (!shift) return { msgs, fix, left };
   let prev = -1;
   for (const m of out) {
-    if (Number.isInteger(m.index)) {
-      const v = moved.get(m.index);
-      m.index = v != null && v > prev ? v : prev + 1; prev = m.index;
+    const i = num(m.index);
+    if (Number.isInteger(i)) {
+      const v = moved.get(i), n = v != null && v > prev ? v : prev + 1;
+      m.index = typeof m.index === "string" ? String(n) : n; prev = n;
     }
-    if (Number.isInteger(m.sourceIndex) && moved.has(m.sourceIndex)) m.sourceIndex = moved.get(m.sourceIndex);
+    const s = num(m.sourceIndex);
+    if (Number.isInteger(s) && moved.has(s)) m.sourceIndex = typeof m.sourceIndex === "string" ? String(moved.get(s)) : moved.get(s);
     if (m.type === "meta" && Number.isInteger(m.totalCount)) m.totalCount += shift;
   }
   return { msgs: out, fix, left };
+};
+window.__GW39 = /^(\s*\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\}(?:\\sffamily\s*)?)(\$[^$]+\$)\s*(?:(?:(?:\\hspace\*\{0\.01mm\})?\\tab\s*)+|\\hblinebreak\s*\\hbright\{)(\$[^$]+\$)\}?\s*\\end\{hangblock\}\s*$/;
+window.__gw39Split = (m, ctx) => {
+  if (m.type !== "question" || (m.hasNum !== true && m.hasNum !== "True") || !(ctx && ctx.group)) return null;
+  const lx = m.latex || "", k = lx.indexOf("\\begin{hangblock}");
+  if (k < 0 || lx.indexOf("\\begin{hangblock}", k + 1) >= 0) return null;
+  const r = lx.slice(k).match(window.__GW39);
+  if (!r) return null;
+  const a = JSON.parse(JSON.stringify(m)), b = JSON.parse(JSON.stringify(m)), pre = lx.slice(0, k), n = (m.attrs || {}).number;
+  a.latex = pre + r[1] + r[2] + "\\end{hangblock}";
+  b.latex = pre + r[1] + r[3] + "\\end{hangblock}";
+  if (/^\d+$/.test(n || "")) b.attrs = { ...m.attrs, number: String(+n + 1).padStart(n.length, "0") };
+  for (const x of [a, b]) window.__clearRender && window.__clearRender(x);
+  return { a, b, what: `한 줄 두 문제 ${r[2].slice(0, 30)} · ${r[3].slice(0, 30)} → 둘째를 번호 문제로 나눔(한 줄에 하나씩 놓임, 이 뒤 화면 번호가 하나씩 당겨짐)` };
+};
+window.__fixCW50 = (msgs, { apply = false, start } = {}) => {
+  if (window.__K.key(msgs) !== "A") return apply ? { msgs, fix: [], left: [] } : { fix: [], left: [] };
+  return window.__msgSplitRun(msgs, (m) => {
+    const r = window.__cw50Split(m);
+    return r && { a: r.a, b: r.b, what: `한 줄 두 문제 ${(m.attrs || {}).number || "?"} · ${r.num} → 둘째 ${r.num} 를 번호 문제로 나눔(한 줄에 하나씩 놓임, 이 뒤 화면 번호가 하나씩 당겨짐)` };
+  }, { apply, start, rule: "CW50",
+    left: (m) => m.type !== "question" && /explain|explanation|answer/.test(m.type || "") && window.__CW50N.test(m.latex || "")
+      && "해설 안에 둘째 문제 번호가 글로 있음 — 정답·풀이를 사람이 나눠야 함(자동 나눔 안 함)" });
 };
 window.__fixCW34 = (msgs, { apply = false, start } = {}) => {
   if (window.__K.key(msgs) !== "A") return [];
@@ -1101,6 +1125,13 @@ window.__check = (msgs, { start } = {}) => {
       for (const x of window.__fixGW35(all, { start })) add(msgs.find((m) => m.index === x.index), "GW35", x.sure ? "떨어진 문장 — 합치기 (__fixGW35)" : "떨어진 문장 — 합칠지 사람 확인", x.before);
     if (window.__vb36Find)
       for (const m of msgs) { const x = window.__vb36Find(m, W[m.index] || ""); if (x) add(m, "GW36", "탭 빠진 단독 수식줄 — 4칸으로 붙이거나 탭 (__fixBRun)", x.before); }
+    {
+      let g = false;
+      for (const m of msgs) {
+        if (m.type === "questionTitle") g = true; else if (/^(title|subtitle|concept)$/.test(m.type || "")) g = false;
+        if (window.__gw39Split(m, { group: g })) add(m, "GW39", "한 줄 두 문제 — 둘째 문제가 번호 없이 붙음 (__fixGW39, 나누면 한 줄에 하나씩)", (m.latex || "").slice(-80));
+      }
+    }
   }
   return out;
 };
@@ -1662,6 +1693,10 @@ window.__fixGW32 = window.__vb.runner("GW32", window.__vb.isB, (m, ctx) => {
   const also = (mm) => { for (const row of (mm.tableData && mm.tableData.cells) || []) for (const c of row || []) if (c && typeof c.latex === "string" && c.latex.includes("\\boldsymbol{")) { c.latex = window.__unbold(c.latex); delete c.pdf; delete c.hash; } };
   return { latex, also, changes: [[(m.latex.match(/\\boldsymbol\{[^}]*\}/) || [""])[0], `볼드 ${n}곳 벗김${m.tableData ? "(표 칸 포함)" : ""}`]] };
 });
+window.__fixGW39 = (msgs, { apply = false, start } = {}) => {
+  if (!window.__vb.isB(msgs)) return apply ? { msgs, fix: [], left: [] } : { fix: [], left: [] };
+  return window.__msgSplitRun(msgs, window.__gw39Split, { apply, start, rule: "GW39" });
+};
 window.__fixB = (msgs, { apply = false, start, corpus, edited } = {}) => {
   const G = window.__vb;
   if (!G.isB(msgs)) return { fix: [], render: [{ where: "파일", what: `${window.__K.nB} 파일 아님(meta.textbook=${G.vendor(msgs) || "없음"}) — 아무것도 안 함` }] };
