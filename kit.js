@@ -1,5 +1,5 @@
-// page-kit v2026.11.05-1103
-window.__kitBuilt = "v2026.11.05-1103";
+// page-kit v2026.11.06-1551
+window.__kitBuilt = "v2026.11.06-1551";
 window.__K = {
   get c() { if (!window.__kitCfg) throw new Error("설정(__kitCfg)이 없음 — 북마크 '도구'를 다시 누르기"); return window.__kitCfg; },
   get A() { return this.c.vendor.A; }, get B() { return this.c.vendor.B; },
@@ -196,8 +196,12 @@ window.__fixT2 = (msgs, { apply = false, start } = {}) => {
   }
   return out;
 };
-window.__CW17 = /\\therefore\s*(?:\\,){4,}(?!\s*&)/g;
-window.__CW18 = /(?<![A-Za-z\\])([0-9]|[a-eh-z])\\,(?=\\left\()/g;
+window.__CW17 = /\\(therefore|because)\s*(?:\\,){4,}(?!\s*&)/g;
+window.__CW36 = /(\\end\{aligned\}\$\\end\{hangblock\}\s*(?:\\TabPositions\{[^}]*\}\s*)?\\begin\{hangblock\}\[[^\]]*\]\{[^}]*\}\{0\})(?:\\hspace\*\{0\.01mm\}\\tab\s*)+(\$\s*(?:[+\-=]|\\times|\\cdot)[^$]*\$)(?=\\end\{hangblock\})/g;
+window.__CW18 = /(?:(?<![A-Za-z\\])([0-9]|[a-z]*[a-eh-z])|(\\(?:alpha|beta|gamma|delta|theta) ?))\\,(?=\\left\((?![a-z],))/g;
+window.__CW40 = /(\\(?:alpha|beta|gamma|delta|theta) ?)\\,(?=\\(?:alpha|beta|gamma|delta|theta)\b)/g;
+window.__CW41 = /(\{\\minboxed\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}\})\^\{(?!\\)/g;
+window.__CW37 = /\$\((?=\$[A-Za-z]\$)/g;
 window.__fixRe = (re, to) => (msgs, { apply = false, start } = {}) => {
   const meta = msgs.find((m) => m.type === "meta");
   if (meta && meta.textbook && meta.textbook !== window.__K.A) return [];
@@ -475,8 +479,50 @@ window.__fixCW14 = (msgs, { apply = false, start } = {}) => {
   }
   return out;
 };
-window.__fixCW17 = window.__fixRe(window.__CW17, "\\therefore ~");
-window.__fixCW18 = window.__fixRe(window.__CW18, "$1");
+window.__fixCW17 = window.__fixRe(window.__CW17, "\\$1 ~");
+window.__fixCW36 = window.__fixRe(window.__CW36, "$1\\hbright{$2}");
+window.__fixCW37 = window.__fixRe(window.__CW37, "$$ (");
+window.__cw38 = (v) => v.replace(/(\d+)\s*\\textasciitilde\s*(?:\{\})?\s*(\d+)/g, (s, a, b) => {
+  const out = []; for (let k = +a; k <= +b && out.length < 60; k++) out.push(String(k).padStart(a.length, "0"));
+  return out.length ? out.join(", ") : s; });
+window.__fixCW38 = (msgs, { apply = false, start } = {}) => {
+  if (window.__K.key(msgs) !== "A") return [];
+  const W = window.__where(msgs, { start }), out = [];
+  for (const m of msgs) {
+    const v = m.attrs && m.attrs.typeRef; if (typeof v !== "string") continue;
+    const next = window.__cw38(v); if (next === v) continue;
+    out.push({ where: W[m.index] || "?", index: m.index, n: 1, before: v, after: next });
+    if (apply) { m.attrs.typeRef = next; window.__clearRender && window.__clearRender(m); }
+  }
+  return out;
+};
+window.__fixCW39 = (msgs, { apply = false, start } = {}) => {
+  if (window.__K.key(msgs) !== "A") return [];
+  const W = window.__where(msgs, { start }), out = [];
+  for (const m of msgs) if (m.type === "image" && m.imagePosition === "floating" && m.xPosAlign === "Right" && Math.abs(+m.xPosMM || 0) > 0.05) {
+    out.push({ where: W[m.index] || "?", index: m.index, n: 1, before: `오른쪽 붙임 그림 가로 띄움 ${(+m.xPosMM).toFixed(1)}mm`, after: "0mm" });
+    if (apply) m.xPosMM = 0;
+  }
+  return out;
+};
+window.__fixCW18 = window.__fixRe(window.__CW18, "$1$2");
+window.__fixCW40 = window.__fixRe(window.__CW40, "$1");
+window.__fixCW41 = window.__fixRe(window.__CW41, "$1^{\\,");
+window.__CW42 = /\$\\hblinebreak\s*\$(?==)/g;
+window.__CW43 = /\$\\(therefore|because)\s*\$\s*\$/g;
+window.__fixCW43 = window.__fixRe(window.__CW43, "$$\\$1 ~");
+window.__fixCW42 = (msgs, { apply = false, start } = {}) => {
+  if (window.__K.key(msgs) !== "A") return [];
+  const W = window.__where(msgs, { start }), out = [];
+  for (const m of msgs) {
+    if (m.type !== "question" || !window.__CW42.test(m.latex || "")) continue;
+    window.__CW42.lastIndex = 0;
+    const lx = m.latex, at = lx.search(window.__CW42), next = lx.replace(window.__CW42, "");
+    out.push({ where: W[m.index] || "?", index: m.index, n: (lx.match(window.__CW42) || []).length, before: lx.slice(Math.max(0, at - 30), at + 40), after: next.slice(Math.max(0, at - 30), at + 30) });
+    if (apply) { m.latex = next; window.__clearRender && window.__clearRender(m); }
+  }
+  return out;
+};
 window.__PMAT = /\\pmat\[(\w+)\]\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\}/g;
 window.__splitTop = (s, sep) => {
   const out = []; let depth = 0, cur = "", i = 0;
@@ -560,8 +606,9 @@ window.__fixA = (msgs, { start, apply = false } = {}) => {
   if (window.__K.key(msgs) !== "A") return { fix: [], msgs };
   const fix = window.__fixCW15(msgs, { start }).map((x) => ({ ...x }));
   const work = apply ? window.__fixCW15(msgs, { apply: true, start }) : msgs;
+  if (window.__fixCW44) for (const x of window.__fixCW44(work, { apply, start })) if (x.sure) fix.push(x);
   for (const [rule, f] of [["CW05", window.__fixT2], ["CW17", window.__fixCW17], ["CW18", window.__fixCW18], ["CW19", window.__fixCW19], ["CW25", window.__fixDiv], ["CW12", window.__fixColon],
-    ["CW27", window.__fixCW27], ["CW28", window.__fixCW28], ["CW30", window.__fixCW30], ["CW14", window.__fixCW14], ["CW31", window.__fixCW31], ["CW33", window.__fixCW33], ["CW34", window.__fixCW34]])
+    ["CW27", window.__fixCW27], ["CW28", window.__fixCW28], ["CW30", window.__fixCW30], ["CW14", window.__fixCW14], ["CW31", window.__fixCW31], ["CW33", window.__fixCW33], ["CW34", window.__fixCW34], ["CW36", window.__fixCW36], ["CW37", window.__fixCW37], ["CW38", window.__fixCW38], ["CW39", window.__fixCW39], ["CW40", window.__fixCW40], ["CW41", window.__fixCW41], ["CW42", window.__fixCW42], ["CW43", window.__fixCW43]])
     for (const x of f(work, { apply, start })) fix.push({ ...x, rule: x.rule || rule });
   return { fix, msgs: work };
 };
@@ -727,7 +774,7 @@ window.__check = (msgs, { start } = {}) => {
     const ok = SP[m.type]; if (!ok) return;
     const seen = [...new Set([...(m.latex || "").matchAll(/\\setmyfontspacing\{([^}]*)\}\{([^}]*)\}/g)].map((x) => x[1] + "/" + x[2]))];
     const squeeze = (v) => { const [r, s] = v.split("/").map(Number); return seen.some((x) => ok.includes(x)) && r >= 0.9 && s >= -10; };
-    const bad = seen.filter((v) => !ok.includes(v) && !(rid === "GW12" && squeeze(v))).sort();
+    const bad = seen.filter((v) => !ok.includes(v) && !squeeze(v)).sort();
     if (bad.length) add(m, rid, `장평/자간 ${bad.join(", ")} (이 자리 기준 ${[...ok].sort().join(", ")})`, "");
   };
   const nb = (m, rid) => { for (const [, F, N, , b] of (m.latex || "").matchAll(HB)) { const k = nbKind(b); if (k) add(m, rid(k), k, `[${F ?? ""}]{${N}} ` + b.slice(0, 130)); } };
@@ -775,13 +822,23 @@ window.__check = (msgs, { start } = {}) => {
         const k = kind(b), p = pre(b);
         if (t === "question" && k === "eq" && (p.includes("\\qquad") || p.includes("\\tab"))) add(m, "CW07", "발문 단독수식줄 앞에 4칸·TAB", snip(F, N, b));
         if (["contents", "conceptUp", "analysis", "analysis_D1"].includes(t) && k === "eq" && !p.includes("\\qquad")
+            && !(t === "conceptUp" && /\\hspace\*\{[1-9][\d.]*mm\}/.test(p))
             && !starts(lead(b), ["$+", "$-", "$="]) && !b.includes("\\hblinebreak") && !(t === "conceptUp" && pi === 0)) add(m, "CW08", `개념·${window.__K.w.up}·${window.__K.w.ana} 단독수식줄에 4칸 없음`, snip(F, N, b));
         if (["explanation", "explain_t", "fillSolution"].includes(t) && k === "eq" && p.includes("\\hspace*{0.01mm}\\tab")
             && !starts(lead(b), ["$+", "$-"])) add(m, "CW16", `${window.__K.nB} 꼴(단독 수식 줄 앞 TAB)`, snip(F, N, b));
       }
       nb(m, (k) => k === "NB-PARA" ? "CW09" : "CW10");
       const lx = m.latex || "";
-      for (const a of lx.matchAll(window.__CW17)) add(m, "CW17", "∴ 뒤 \\,\\,\\,\\, → ~ (__fixCW17)", lx.slice(Math.max(0, a.index - 20), a.index + 60));
+      for (const a of lx.matchAll(window.__CW17)) add(m, "CW17", "∴·∵ 뒤 \\,\\,\\,\\, → ~ (__fixCW17)", lx.slice(Math.max(0, a.index - 20), a.index + 60));
+      for (const a of lx.matchAll(window.__CW36)) add(m, "CW36", "묶음 뒤 탭으로 민 이음 줄 → \\hbright (__fixCW36)", a[0].slice(-80));
+      for (const a of lx.matchAll(window.__CW37)) add(m, "CW37", "수식 뒤 설명 괄호 앞 한 칸 $( → $ ( (__fixCW37)", lx.slice(Math.max(0, a.index - 30), a.index + 30));
+      for (const a of lx.matchAll(window.__CW40)) add(m, "CW40", "그리스 문자 곱 사이 칸 지움 (__fixCW40)", lx.slice(Math.max(0, a.index - 20), a.index + 30));
+      for (const a of lx.matchAll(window.__CW41)) add(m, "CW41", "빈칸 상자 뒤 지수 앞 작은 칸 ^{\\,…} (__fixCW41)", lx.slice(Math.max(0, a.index + a[1].length - 20), a.index + a[0].length + 10));
+      for (const a of lx.matchAll(window.__CW43)) add(m, "CW43", "∴·∵ 혼자 수식 뒤 새 수식 → $\\therefore ~… (__fixCW43)", lx.slice(Math.max(0, a.index - 20), a.index + 40));
+      if (m.type === "question") for (const a of lx.matchAll(window.__CW42)) add(m, "CW42", "발문 수식 중간 줄바꿈 → 한 수식으로 (__fixCW42)", lx.slice(Math.max(0, a.index - 30), a.index + 30));
+      const tr = m.attrs && m.attrs.typeRef;
+      if (typeof tr === "string" && window.__cw38(tr) !== tr) add(m, "CW38", "유형 머리 범위 → 쉼표로 펼침 (__fixCW38)", tr);
+      if (m.type === "image" && m.imagePosition === "floating" && m.xPosAlign === "Right" && Math.abs(+m.xPosMM || 0) > 0.05) add(m, "CW39", "오른쪽 붙임 그림 가로 띄움 → 0 (__fixCW39)", `xPosMM ${(+m.xPosMM).toFixed(1)}`);
       for (const x of window.__cw14(m)) add(m, "CW14", `라벨 ${x.lab} 폭 ${x.N} → 표 ${x.want}`, x.snip);
       if ((m.type === "contents_D1" || m.type === "analysis_D1") && window.__cw15([m]).out.length) add(m, "CW15", "예시·참고 상자 내어쓰기에 [참고] 글자 폭이 남음 (__fixCW15)", lx.slice(lx.indexOf("\\begin{hangblock}")).slice(0, 60));
       if (lx.includes("\\begin{cases}") && window.__cw28(lx) !== lx) add(m, "CW28", "연립 ㉠㉡ 꼬리 → 한 칸 + \\hbright (__fixCW28)", lx.slice(lx.indexOf("\\begin{cases}")).slice(0, 90));
@@ -789,12 +846,14 @@ window.__check = (msgs, { start } = {}) => {
       if (["contents", "contents_D1", "conceptUp"].includes(m.type) && window.__cw33(lx).n) { const i = ([...lx.matchAll(/\{\\color\[HTML\]\{([0-9A-Fa-f]{6})\}/g)].find((a) => window.__cw33Blue(a[1])) || { index: 0 }).index; add(m, "CW33", "개념 파란 꾸밈 → 고딕 굵게 8pt 3057B9 (__fixCW33)", lx.slice(Math.max(0, i), i + 70)); }
       for (const a of lx.matchAll(window.__CW34)) if (!window.__cw34Keep(a[1], m.type)) add(m, "CW34", `색 입힌 수식 ${a[1]} → 검정 (__fixCW34)`, a[0].slice(0, 70));
       for (const a of lx.matchAll(window.__CW31)) add(m, "CW31", "⋯㉠ 꼬리 + 채점 꼬리 한 줄 → \\hspace*{D} + \\hbright (__fixCW31 · 렌더로 D)", lx.slice(Math.max(0, a.index - 30), a.index + a[0].length));
-      for (const a of lx.matchAll(window.__CW18)) add(m, "CW18", `${a[1]}\\,\\left( → ${a[1]}\\left( (__fixCW18)`, lx.slice(Math.max(0, a.index - 30), a.index + 40));
+      for (const a of lx.matchAll(window.__CW18)) { const g = (a[1] || a[2] || "").trim(); add(m, "CW18", `${g}\\,\\left( → ${g}\\left( (__fixCW18)`, lx.slice(Math.max(0, a.index - 30), a.index + 40)); }
       for (const a of lx.matchAll(window.__PMAT)) if (__pmatBad(a)) add(m, "CW19", "행렬 꼴(빈 열·~·칸) (__fixCW19)", a[0].slice(0, 80));
       if (window.__div.isDiv(m)) for (const [w, s] of window.__div.issues(msgs, msgs.indexOf(m), false)) add(m, "CW25", w + " (__fixDiv)", s);
       for (const at of window.__colonFix(lx).at) add(m, "CW12", "글 콜론 앞뒤 빈칸 한 칸 (__fixColon)", at);
       spacing(m, "CW13");
     }
+    if (window.__fixCW44)
+      for (const x of window.__fixCW44(all, { start })) add(msgs.find((m) => m.index === x.index), "CW44", x.sure ? "떨어진 문장 — 합치기 (__fixCW44)" : "떨어진 문장 — 합칠지 사람 확인", x.before);
     msgs.forEach((m, i) => {
       const c = msgs[i + 1];
       if (m.type !== "question" || !c || c.type !== "choice") return;
@@ -1047,11 +1106,11 @@ window.__lineRules = (m, W, H, ws, cut = false, vendor = "") => {
   const seen = new Set();
   rows.forEach((r, k) => {
     if (!isMath[k] || isEq[k] || r.x0 / MM > 0.8 || k === 0 || !isMath[k - 1] || rows[k - 1].x0 / MM <= 2) return;
-    if (gak && ROW_LABEL.test(r.text)) return;
+    if (ROW_LABEL.test(r.text)) return;
     const nb = [k - 1, k + 1].filter((j) => j < rows.length && isMath[j]).map((j) => (rows[j].x0 / MM).toFixed(1));
     if (nb.length) { out.push(["수식 줄 시작", k, `이 줄만 0mm, 앞뒤 수식 줄은 ${nb.join(", ")}mm`, cut30(r.text)]); seen.add(k); }
   });
-  if (!gak && /\\qquad\s*\$/.test(lx))
+  if (!gak && (/\\qquad\s*\$/.test(lx) || (m.type === "conceptUp" && /\\hspace\*\{[1-9][\d.]*mm\}\s*\$/.test(lx))))
     rows.forEach((r, k) => {
       if (!seen.has(k) && isMath[k] && !isEq[k] && r.x0 / MM <= 0.8 && k > 0) out.push(["4칸 빠짐", k, "원본은 \\qquad 들여쓰기인데 0mm 에서 시작(식이 넓어 넘어감)", cut30(r.text)]);
     });
@@ -2036,13 +2095,15 @@ window.__vb35 = (() => {
   };
   return { plain, decide, END, LAB };
 })();
-window.__fixGW35 = (msgs, { apply = false, start, edited = false, corpus } = {}) => {
-  if (!window.__vb.isB(msgs)) return [];
-  const K = window.__vb35, W = window.__where(msgs, { start });
+window.__fixGW35 = (msgs, { apply = false, start, edited = false, corpus, vA = false } = {}) => {
+  if (vA ? window.__K.key(msgs) !== "A" : !window.__vb.isB(msgs)) return [];
+  const K = window.__vb35, W = window.__where(msgs, { start }), RID = vA ? "CW44" : "GW35";
+  const TYPES = vA ? ["question", "fillSolution", "explanation", "explain_t"] : ["explanation"];
   const text = corpus || msgs.map((m) => m.latex || "").join("\n").replace(/\$[^$]*\$/g, " X ").replace(/\\[A-Za-z]+\*?/g, " ");
   const out = [];
+  const comma = (m, p, n) => vA && m.type === "question" && /,\s*$/.test(K.plain(p)) && /^[가-힣$]/.test(n.trim()) && !K.LAB.test(n.trim()) ? { join: " ", why: "발문 쉼표 뒤 끊김" } : null;
   for (const m of msgs) {
-    if (!m.latex || m.type !== "explanation" || /정답/.test(W[m.index] || "")) continue;
+    if (!m.latex || !TYPES.includes(m.type) || /정답/.test(W[m.index] || "")) continue;
     let lx = m.latex, guard = 0, changed = true;
     while (changed && guard++ < 20) {
       changed = false;
@@ -2050,11 +2111,11 @@ window.__fixGW35 = (msgs, { apply = false, start, edited = false, corpus } = {})
       for (const h of hs) {
         const segs = h[4].split(/\\hblinebreak\s*/);
         for (let k = 0; k + 1 < segs.length; k++) {
-          const d = K.decide(segs[k], segs[k + 1], text);
+          const d = K.decide(segs[k], segs[k + 1], text) || comma(m, segs[k], segs[k + 1]);
           if (!d) continue;
           if (/^\s*\{?\$/.test(segs[k + 1])) { d.join = null; d.why += " · 문단 안 다음 줄이 수식으로 시작(일부러 나눴을 수 있음)"; }
           const sure = d.join !== null && !edited;
-          out.push({ where: W[m.index], index: m.index, rule: "GW35", sure, what: `문단 안 줄바꿈 ${sure ? "합침" : "후보"} — ${d.why}`, before: `${K.plain(segs[k]).slice(-12)} ⏎ ${K.plain(segs[k + 1]).slice(0, 12)}` });
+          out.push({ where: W[m.index], index: m.index, rule: RID, sure, what: `문단 안 줄바꿈 ${sure ? "합침" : "후보"} — ${d.why}`, before: `${K.plain(segs[k]).slice(-12)} ⏎ ${K.plain(segs[k + 1]).slice(0, 12)}` });
           if (sure && apply) {
             const ns = [...segs]; ns.splice(k, 2, segs[k].replace(/\s+$/, "") + d.join + segs[k + 1].replace(/^\s+/, ""));
             lx = lx.replace(h[0], () => h[0].replace(h[4], () => ns.join("\\hblinebreak\n"))); changed = true; break;
@@ -2068,10 +2129,10 @@ window.__fixGW35 = (msgs, { apply = false, start, edited = false, corpus } = {})
         if ((a[1] || "0mm") !== (b[1] || "0mm") || a[2] !== b[2] || a[3] !== b[3]) continue;
         const between = lx.slice(a.index + a[0].length, b.index);
         if (between.trim()) continue;
-        const last = a[4].split(/\\hblinebreak\s*/).pop(), d = K.decide(last, b[4], text);
+        const last = a[4].split(/\\hblinebreak\s*/).pop(), d = K.decide(last, b[4], text) || comma(m, last, b[4]);
         if (!d) continue;
         const sure = d.join !== null && !edited;
-        out.push({ where: W[m.index], index: m.index, rule: "GW35", sure, what: `문단 ${sure ? "합침" : "후보"} — ${d.why}`, before: `${K.plain(last).slice(-12)} ⏎ ${K.plain(b[4]).slice(0, 12)}` });
+        out.push({ where: W[m.index], index: m.index, rule: RID, sure, what: `문단 ${sure ? "합침" : "후보"} — ${d.why}`, before: `${K.plain(last).slice(-12)} ⏎ ${K.plain(b[4]).slice(0, 12)}` });
         if (sure && apply) {
           const merged = a[0].replace(/\\end\{hangblock\}$/, "").replace(/\s+$/, "") + d.join + b[4].replace(/^\s+/, "") + "\\end{hangblock}";
           lx = lx.slice(0, a.index) + merged + lx.slice(b.index + b[0].length); changed = true; break;
@@ -2082,6 +2143,7 @@ window.__fixGW35 = (msgs, { apply = false, start, edited = false, corpus } = {})
   }
   return out;
 };
+window.__fixCW44 = (msgs, o = {}) => window.__fixGW35(msgs, { ...o, vA: true });
 window.__vb36Find = (m, where = "") => {
   if (!m.latex || m.type !== "explanation" || /정답/.test(where)) return null;
   const K = window.__vb35, G = window.__vb, lx = m.latex;
@@ -2150,7 +2212,7 @@ window.__vbDecoFind = (lx) => {
   for (let k = 1; k < hbs.length; k++) {
     const body = hbs[k][4], labs = [];
     for (let i = body.indexOf("{" + W); i >= 0; i = body.indexOf("{" + W, i + 1)) { const j = grp(body, i); labs.push(body.slice(i, j)); i = j - 1; }
-    if (!labs.length || body.includes("\\hbright") || labs.reduce((s, l) => s.replace(l, ""), body).replace(/\\hspace\*\{[^}]*\}|\\tab|\\qquad|\\quad|~|\s/g, "")) continue;
+    if (!labs.length || body.includes("\\hbright") || labs.reduce((s, l) => s.replace(l, ""), body).replace(/\\hspace\*\{[^}]*\}|\\tab|\\qquad|\\quad|\\(?:sffamily|rmfamily|bfseries|mdseries)\b|~|\s/g, "")) continue;
     const prev = hbs[k - 1], unders = [];
     for (const mm of prev[4].matchAll(/\$[^$]*\$/g)) {
       for (let i = mm[0].indexOf("{\\underline{"); i >= 0; i = mm[0].indexOf("{\\underline{", i + 1)) {
@@ -2248,7 +2310,8 @@ window.__fixGW33Run = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) 
   window.__job = { done: false, log: [], fix: [], left: [] };
   (async () => {
     try {
-      if (!window.__vb.isB(msgs)) throw new Error(`${window.__K.nB} 파일만`);
+      const vk = window.__K.key(msgs), rid = vk === "B" ? "GW33" : "CW35";
+      if (vk !== "A" && vk !== "B") throw new Error("업체 모름 — 아무것도 안 함");
       const lib = pdfjs || await window.__K.pdfjs(), W = window.__where(msgs, { start });
       const meta = msgs.find((m) => m.type === "meta"), done = msgs.find((m) => m.type === "done") || { type: "done" };
       const one = async (m) => {
@@ -2257,12 +2320,12 @@ window.__fixGW33Run = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) 
         return window.__vbRendered(mm);
       };
       const worst = (r) => Math.max(0, ...((r && r.renderWarnings) || []).map((w) => w.overflowMM || 0));
-      const over = async (r) => worst(r) > 0 || (await window.__lineFind(lib, r, "B")).some((f) => f[0] === "넘침");
+      const over = async (r) => worst(r) > 0 || (await window.__lineFind(lib, r, vk)).some((f) => f[0] === "넘침");
       let seen = 0;
       for (const m of msgs) {
         if (!m.pdf || !m.latex || ["table", "title", "image"].includes(m.type) || /정답/.test(W[m.index] || "")) continue;
         let R = await window.__vbRows(lib, m), os = window.__vbOrphans(R);
-        for (const o of window.__vbOneChars(R))
+        if (vk === "B") for (const o of window.__vbOneChars(R))
           (__job.cand = __job.cand || []).push({ where: W[m.index], index: m.index, rule: "GW33 후보", what: `'${R.rows[o.i - 1].text.slice(-8)} / ${o.r.text}' 한 글자만 다음 줄 — 장평·자간을 조금 줄이면 당겨질 수 있음` });
         if (!os.length) continue;
         seen += os.length;
@@ -2282,7 +2345,7 @@ window.__fixGW33Run = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) 
             if (!r || !r.pdf) continue;
             const R2 = await window.__vbRows(lib, r);
             if (window.__vbOrphans(R2).length < window.__vbOrphans(R).length && R2.rows.length <= R.rows.length && !(await over(r))) {
-              __job.fix.push({ where: W[m.index], index: m.index, rule: "GW33", before: `${R.rows[o.i - 1].text.slice(-8)} / ${o.r.text}`, what: `장평 ${base[0]}→${ra} · 자간 ${base[1]}→${sp} (그 문단만)` });
+              __job.fix.push({ where: W[m.index], index: m.index, rule: rid, before: `${R.rows[o.i - 1].text.slice(-8)} / ${o.r.text}`, what: `장평 ${base[0]}→${ra} · 자간 ${base[1]}→${sp} (그 문단만)` });
               if (apply) { m.latex = lx; Object.assign(m, { ...r, index: m.index }); }
               ok = true; R = R2; break;
             }
@@ -2293,11 +2356,13 @@ window.__fixGW33Run = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) 
         __job.log.push(`${W[m.index]} 끝`);
       }
       __job.log.unshift(`기호로 시작하는 줄 ${seen} · 당김 ${__job.fix.length} · 못 함 ${__job.left.length} · 한 글자 후보 ${(__job.cand || []).length}`);
+      window.__loadMessages(msgs); __job.log.push("msgs 를 페이지에 다시 불러옴");
     } catch (e) { __job.log.push("ERR " + e.message); }
     __job.done = true;
   })();
   return "started";
 };
+window.__fixCW35Run = (msgs, o) => window.__fixGW33Run(msgs, o);
 window.__vbHangMarks = (lx) => {
   const out = [];
   for (const h of lx.matchAll(window.__vb.HBX)) {
@@ -2722,6 +2787,65 @@ window.__fixBRun = (msgs, { start, apply = false, pdfjs, wait = 2500 } = {}) => 
     return out;
   };
 })();
+window.__qqSplitCands = (lx) => {
+  const out = [], HB = /(\\begin\{hangblock\}\[[^\]]*\]\{[^}]*\}\{0\}(?:\\sffamily )?\\hspace\*\{0\.01mm\}\\qquad )\$([^$]+)\$(?=\\end\{hangblock\})/g;
+  for (const h of lx.matchAll(HB)) {
+    const s = h[2], cut = [];
+    for (let i = 0, d = 0; i < s.length; i++) {
+      const c = s[i];
+      if (c === "\\" && /^\\left\b/.test(s.slice(i))) { d++; i += 4; continue; }
+      if (c === "\\" && /^\\right\b/.test(s.slice(i))) { d--; i += 5; continue; }
+      if (c === "\\") { i++; continue; }
+      if (c === "{") d++; else if (c === "}") d--;
+      else if (d === 0 && i > 0 && (c === "+" || c === "-") && !/[=(,&]\s*$/.test(s.slice(0, i))) cut.push(i);
+    }
+    for (const i of cut.reverse()) out.push(lx.replace(h[0], () => `${h[1]}$${s.slice(0, i).trimEnd()}$\\hblinebreak \\hbright{$${s.slice(i)}$}`));
+  }
+  return out;
+};
+window.__qqShrinkCands = (lx) => {
+  const out = [];
+  for (const h of lx.matchAll(/\\begin\{hangblock\}\[([\d.]+)mm\]\{([\d.]+)mm\}(?=[^\n]*\\hblinebreak\s*\n?\$=)/g)) {
+    const v = +h[2];
+    for (const x of [6, 5, 4, 3, 2, 1, 0].filter((x) => x < v)) out.push(lx.slice(0, h.index) + `\\begin{hangblock}[${h[1]}mm]{${x}mm}` + lx.slice(h.index + h[0].length));
+  }
+  if (!/\\qquad/.test(lx)) return out;
+  for (const x of [4, 3.5, 3, 2.5, 2, 1.5]) {
+    const t = lx.replace(/\\hspace\*\{0\.01mm\}\\qquad\s*/g, `\\hspace*{${x}mm}`).replace(/\\begin\{aligned\}\\qquad&/g, `\\begin{aligned}\\hspace*{${x}mm}&`);
+    if (t !== lx) out.push(t);
+  }
+  return out;
+};
+window.__eqSplitCands = (lx) => {
+  const out = [];
+  const top = (s) => {
+    let d = 0, hit = null;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (c === "\\" && /^\\left\b/.test(s.slice(i))) { d++; i += 4; continue; }
+      if (c === "\\" && /^\\right\b/.test(s.slice(i))) { d--; i += 5; continue; }
+      const ne = c === "\\" && d === 0 && s.slice(i).match(/^\\neq?(?![A-Za-z])/);
+      if (ne) { if (hit) return null; hit = [i, ne[0]]; i += ne[0].length - 1; continue; }
+      if (c === "\\") { i++; while (/[A-Za-z]/.test(s[i + 1] || "")) i++; continue; }
+      if (c === "{") d++; else if (c === "}") d--;
+      else if (c === "=" && d === 0) { if (hit) return null; hit = [i, "="]; }
+    }
+    return hit;
+  };
+  for (const h of lx.matchAll(/(\\begin\{hangblock\}(?:\[[^\]]*\])?\{[^}]*\}\{[^}]*\}(?:\\sffamily\s*)?)([\s\S]*?)(\\end\{hangblock\})/g)) {
+    const [all, head, body, end] = h;
+    if (/\\begin\{aligned\}/.test(body)) continue;
+    const lab = body.match(/^\{\\fontsize\{[^}]*\}\{[^}]*\}\\selectfont\s*(\([^)]{1,4}\))\s*\}\s*/);
+    const rest = lab ? body.slice(lab[0].length) : body;
+    const segs = rest.split(/\\hblinebreak\s*/).map((s) => s.trim());
+    if (!segs.every((s) => /^\$[^$]+\$$/.test(s))) continue;
+    const eqs = segs.map((s) => { const t = s.slice(1, -1), h = top(t); return h && h[0] > 0 && h[0] + h[1].length < t.length ? [t.slice(0, h[0]).trim(), h[1], t.slice(h[0] + h[1].length).trim()] : null; });
+    if (eqs.some((e) => !e)) continue;
+    const rows = eqs.map(([L, op, R], i) => `${i === 0 && lab ? `\\text{${lab[1]} }` : ""}&${L}\\\\${op}&${R}`).join("\\\\");
+    out.push(lx.slice(0, h.index) + head + `$\\begin{aligned}${rows}\\end{aligned}$` + end + lx.slice(h.index + all.length));
+  }
+  return out;
+};
 window.__fixARun = (msgs, { start, apply = false, pdfjs, max = 12, wait = 2500 } = {}) => {
   const sleep = (t) => new Promise((r) => setTimeout(r, t));
   window.__job = { done: false, log: [], fix: [], left: [] };
@@ -2738,7 +2862,7 @@ window.__fixARun = (msgs, { start, apply = false, pdfjs, max = 12, wait = 2500 }
         return (await window.__K.exportRendered()).messages.find((x) => x.index === 0);
       };
       const warn = (r) => Math.max(0, ...((r && r.renderWarnings) || []).map((w) => w.overflowMM || 0));
-      const lines = async (r) => r && r.pdf ? (await window.__lineFind(lib, r, "A")).filter((f) => f[0] === "넘침" || ((f[0] === "4칸 빠짐" || f[0] === "수식 줄 시작") && r.type === "conceptUp")).length : 0;
+      const lines = async (r) => r && r.pdf ? (await window.__lineFind(lib, r, "A")).filter((f) => f[0] === "넘침" || f[0] === "4칸 빠짐" || (f[0] === "수식 줄 시작" && r.type === "conceptUp")).length : 0;
       const targets = [];
       for (const m of work) {
         if (!m.latex || ["table", "title", "checkpoint"].includes(m.type) || (W[m.index] || "").includes("정답")) continue;
@@ -2748,9 +2872,10 @@ window.__fixARun = (msgs, { start, apply = false, pdfjs, max = 12, wait = 2500 }
       }
       __job.log.push(`넘친 메시지 ${targets.length}`);
       for (const m of targets) {
-        const cands = [...(m.type === "conceptUp" && window.__qqCandidates ? window.__qqCandidates(m.latex) : []), ...window.__ovCandidates(m.latex)];
+        const up = m.type === "conceptUp";
+        const cands = [...(up ? window.__qqShrinkCands(m.latex) : []), ...(up && window.__qqCandidates ? window.__qqCandidates(m.latex) : []), ...(up ? window.__eqSplitCands(m.latex) : []), ...window.__ovCandidates(m.latex), ...window.__qqSplitCands(m.latex)];
         let ok = null;
-        for (let i = 0; i < cands.length && i < max; i++) {
+        for (let i = 0; i < cands.length && i < max + (up ? 6 : 0); i++) {
           const r = await one(cands[i], m);
           if (r && r.pdf && warn(r) === 0 && !(await lines(r))) { ok = [i, cands[i], r]; break; }
         }
@@ -2797,6 +2922,19 @@ window.__eyeSyntax = (lx) => {
   return bad;
 };
 window.__eyeWmm = (msgs) => ((msgs || []).find((m) => m.type === "meta")?.pageLayout?.columnWidthMM) || 85;
+window.__eyeMsgWmm = async (m, msgs) => {
+  const S = window.__eyeS || {}, C = (S.wmmOf = S.wmmOf || {}), key = m && m.index;
+  if (key != null && C[key]) return C[key];
+  let w = 0;
+  try { if (m && m.pdf) { const lib = window.__eyeLib || (window.__eyeLib = await window.__K.pdfjs());
+    const doc = await lib.getDocument({ data: Uint8Array.from(atob(m.pdf), (c) => c.charCodeAt(0)) }).promise;
+    w = (await doc.getPage(1)).getViewport({ scale: 1 }).width * 25.4 / 72; doc.destroy(); } } catch (e) { w = 0; }
+  const ms = msgs || S.msgs || [], meta = ms.find((x) => x.type === "meta") || {};
+  if (!(w > 5)) w = +((meta.viewerExport && meta.viewerExport.widths) || {})[`${m && m.type}_width`] || window.__eyeWmm(ms);
+  w = Math.round(w * 100) / 100;
+  if (key != null) C[key] = w;
+  return w;
+};
 window.__eyeRender = async (lx, { wmm = 85, scale = 3 } = {}) => {
   const out = { ok: false, wmm };
   try {
@@ -2823,7 +2961,7 @@ window.__eyeTry = async (msgs, index, from, to) => {
   const m = msgs.find((x) => x.index === index);
   if (!m || !m.latex) return { block: "메시지 없음" };
   if (!m.latex.includes(from)) return { block: "찾을 글이 없음" };
-  const wmm = window.__eyeWmm(msgs), lx = m.latex.replace(from, to);
+  const wmm = await window.__eyeMsgWmm(m, msgs), lx = m.latex.replace(from, to);
   const before = await window.__eyeRender(m.latex, { wmm }), after = await window.__eyeRender(lx, { wmm });
   const s0 = window.__eyeSyntax(m.latex), s1 = window.__eyeSyntax(lx);
   before.syntax = s0; after.syntax = s1; after.latex = lx;
@@ -3140,6 +3278,11 @@ const EYE_GUIDE = `눈검수 — 쪽 그림을 책 보듯 보고, 자동 도구�
 올리기: await __eyeAdd({no:"0091", part:"풀이", what:"보이는 그대로 짧게", fix:"이렇게 고치면 됨", from:"원문 LaTeX 조각", to:"고친 조각", conf:"높음|중간|낮음", kind:"깨짐|새 꼴|간격"})
   no = 상자 위 4자리 화면 번호. 한 번호에 청크가 여럿(발문·그림·선지·표…)이니 본 자리를 part 로 꼭 준다(part:"선지") — 안 주면 첫 청크(발문)에 붙는다. 번호 없는 자리(유형 박스·개념)는 no 없이 part:"유형 12 박스".
   from(그 자리 원문 조각)은 꼭 — 그 칸에 한 곳만 있게 앞뒤 글을 붙인다. to 는 모르면 빼도 된다.
+  표 칸·개념 유형 머리처럼 청크 LaTeX 밖 글(__eyeLatex 의 '청크 밖 글')이면 그 글을 from 으로 주면 '자리만' 카드(고치기 버튼 없음)로 올라간다.
+  to 는 from 을 바꾼 LaTeX 만 — 설명·"(…하고)" 같은 말은 fix 에. to 에 원문에 없는 낱말(가~힣)이 끼면 도구가 추천을 빼고 설명으로 옮긴다.
+  줄을 끊어 새 문단으로 내리거나 두 문단을 합칠 때도 to 로 쓴다: from 을 문단 경계(\\end{hangblock}·\\begin{hangblock}…)까지 넓혀 잡고,
+  새 문단 머리는 같은 청크의 이웃 문단 머리(\\begin{hangblock}[…]{…}{0}\\sffamily 등)를 그대로 베낀다 — 예
+  from "…=\\,-13$}\\hspace*{0.01mm}\\qquad {$\\therefore …$}\\end{hangblock}" → to "…=\\,-13$}\\end{hangblock}\\n\\begin{hangblock}[0mm]{0mm}{0}\\sffamily \\hspace*{0.01mm}\\qquad {$\\therefore …$}\\end{hangblock}". 청크(메시지) 둘을 합치거나 나누는 건 못 한다.
   도구가 from 을 보고 규칙대로·화질·렌더 동작이면 "올리지 않음(…)"으로 돌려준다 — 그 말이 맞으면 그대로 두고 다음으로(사람은 '뺀 것' 목록으로 본다).
   확실하지 않으면 '낮음'으로라도 올린다(사람이 고른다). 같은 꼴이 여러 번이면 전부.
 잘못 올렸으면 __eyeDel(번호).
@@ -3262,15 +3405,26 @@ window.__eyeTo = (k) => { const v = document.getElementById("__eyeView"); if (!v
   v.scrollTop = k === 1 ? 0 : k === 2 ? (v.scrollHeight - v.clientHeight) / 2 : k === 3 ? v.scrollHeight : k;
   const S = window.__eyeS; if (k === 3 && S && S.aiAt === S.cur) eyeMarkSeen(S.cur);
   return Math.round(v.scrollTop); };
-window.__eyeLatex = (no, part) => { const m = eyeFind({ no, part }); return m ? window.__show(`${eyeName(m)}\n${m.latex}`) : "그 번호 없음"; };
+const eyeOther = (m) => [...((m.tableData && m.tableData.cells) || []).flat().map((c) => c && c.latex), ...Object.values(m.attrs || {})].filter((s) => typeof s === "string" && s);
+window.__eyeLatex = (no, part) => { const m = eyeFind({ no, part }); if (!m) return "그 번호 없음";
+  const o = eyeOther(m);
+  return window.__show(`${eyeName(m)}\n${m.latex || "(청크 LaTeX 없음)"}${o.length ? `\n── 청크 밖 글(표 칸·속성 — 카드는 '자리만'으로 올라감, 고치기 버튼 없음) ──\n${o.join("\n")}` : ""}`); };
+const eyeToNote = (from, to) => {
+  const strip = (s) => (s || "").replace(/\\text\{[^{}]*\}/g, ""), have = strip(from);
+  return [...new Set(strip(to).match(/[가-힣]+/g) || [])].filter((w) => !have.includes(w));
+};
 window.__eyeAdd = (o) => {
   const S = window.__eyeS; if (!S || !S.msgs) return "먼저 __eyeOpen()";
+  const bad = o.to ? eyeToNote(o.from, o.to) : [];
+  if (bad.length) o = { ...o, to: "", fix: `${o.fix || ""}${o.fix ? " · " : ""}(추천에 섞인 설명: ${bad.join(" ")})` };
   S.lastPend = null;
   const m = eyeFind(o); if (!m) return `번호 ${o.no} 를 못 찾음`;
-  if (!o.from) return `올리지 않음 — from(그 자리 원문 LaTeX 조각)이 없음. __eyeLatex("${o.no || ""}", "${o.part || ""}") 로 원문을 보고 넣어 다시`;
-  if (!(m.latex || "").includes(o.from)) return `${S.where[m.index]} 에 그 글(from)이 없음 — __eyeLatex("${o.no}") 로 원문 확인`;
-  if (m.latex.split(o.from).length > 2) return `${S.where[m.index]} 에 그 글(from)이 여러 곳 — 앞뒤 글을 더 붙여 한 곳만 맞게`;
-  const dup = S.items.find((x) => x.index === m.index && x.from && (x.from.includes(o.from) || o.from.includes(x.from)));
+  const lat = `__eyeLatex("${o.no || ""}", "${o.part || ""}")`;
+  if (!o.from) return `올리지 않음 — from(그 자리 원문 LaTeX 조각)이 없음. ${lat} 로 원문을 보고 넣어 다시`;
+  if (!(m.latex || "").includes(o.from) && eyeOther(m).some((s) => s.includes(o.from))) o = { ...o, spot: o.from, from: "", to: "" };
+  else if (!(m.latex || "").includes(o.from)) return `${S.where[m.index]} 에 그 글(from)이 없음 — ${lat} 로 원문 확인`;
+  if (o.from && m.latex.split(o.from).length > 2) return `${S.where[m.index]} 에 그 글(from)이 여러 곳 — 앞뒤 글을 더 붙여 한 곳만 맞게`;
+  const dup = S.items.find((x) => x.index === m.index && (o.spot ? x.spot === o.spot : x.from && (x.from.includes(o.from) || o.from.includes(x.from))));
   if (dup) return `올리지 않음 — 같은 자리 카드가 이미 있음(#${dup.id} ${dup.src === "규칙" ? "자동 검사" : "AI"} · ${dup.what})`;
   const k = window.__K.key(S.msgs), g = eyeGate(o, m, k);
   if (g && g.rule) {
@@ -3278,7 +3432,7 @@ window.__eyeAdd = (o) => {
     eyeSave(); eyeBar();
     return `올리지 않음(${g.rule}) — ${g.why}. '뺀 것'에 남김`;
   }
-  const it = { id: S.next++, index: m.index, where: eyeName(m), src: o.src || "AI", what: o.what || "", fix: o.fix || "", from: o.from || "", to: o.to || "",
+  const it = { id: S.next++, index: m.index, where: eyeName(m), src: o.src || "AI", what: o.what || "", fix: o.fix || "", from: o.from || "", to: o.to || "", ...(o.spot ? { spot: o.spot } : {}),
     conf: o.conf || "중간", kind: o.kind || "새 꼴", verdict: "", memo: "" };
   const c = (S.chk || {})[m.index] || [], f = (S.fixTo || {})[m.index];
   it.ruleSnap = { ids: [...new Set([...c.map((x) => x.rule), ...(f ? f.rules : [])])], whats: c.map((x) => x.what), fixable: !!f };
@@ -3312,6 +3466,8 @@ window.__eyePlan = async (id, { part, from, to, fix } = {}) => {
   if (!from || !to || from === to) return "from·to 를 주세요(from = 그 청크에 한 곳만 있는 원문 조각)";
   const n = m.latex.split(from).length - 1;
   if (n !== 1) return `${S.where[m.index]} 에 그 글(from)이 ${n ? "여러 곳" : "없음"} — 앞뒤 글을 붙여 한 곳만 맞게`;
+  const bad = eyeToNote(from, to);
+  if (bad.length) return `to 에 원문에 없는 낱말(${bad.join(" ")}) — 설명은 fix 에, to 는 바뀐 LaTeX 만`;
   const t = await window.__eyeTry(S.msgs, m.index, from, to);
   Object.assign(it, { index: m.index, where: eyeName(m) || it.where, from, to, fix: fix || it.fix, plan: true, err: t.block ? "이 안대로 하면 막힘 — " + t.block : "",
     _ba: null, _baK: null, _lineK: null, line: [] });
@@ -3433,7 +3589,7 @@ const EYE_CSS = `#__eyePop{--bg:#eef1f4;--panel:#fff;--ink:#1d2733;--mute:#5d6b7
 #__eyePop .zoom .z{min-width:46px;text-align:center}
 #__eyeView{flex:1;overflow:auto;padding:14px}
 #__eyeView .page{position:relative;margin:0 auto;background:#fff}
-#__eyeView .page img{display:block;width:100%;height:auto}
+#__eyeView .page img{display:block;width:100%;height:100%}
 #__eyeView .wait{padding:40px;color:var(--mute);text-align:center}
 #__eyePop .mk{position:absolute;border:2px solid var(--a);background:var(--mark-a);border-radius:3px;cursor:pointer}
 #__eyePop .mk.B{border-color:var(--b);background:var(--mark-b)} #__eyePop .mk.C{border-color:var(--c);background:var(--mark-c)}
@@ -3481,7 +3637,8 @@ const EYE_CSS = `#__eyePop{--bg:#eef1f4;--panel:#fff;--ink:#1d2733;--mute:#5d6b7
 #__eyePop .lint.ok{color:var(--ok);border-color:var(--ok)} #__eyePop .lint.bad{color:var(--a);border-color:var(--a);background:var(--del)}
 #__eyePop .ba{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
 #__eyePop .ba figure{margin:0;display:grid;gap:4px} #__eyePop .ba figcaption{font-size:12px;color:var(--mute)}
-#__eyePop .ba img,#__eyePop .ba canvas{width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#fff;cursor:zoom-in}
+#__eyePop .ba img,#__eyePop .ba canvas{width:100%;max-width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#fff;cursor:zoom-in}
+#__eyePop .ba img:not([src]){min-height:36px;visibility:hidden}
 #__eyePop .ph{border:1px dashed var(--line);border-radius:4px;display:grid;place-items:center;min-height:60px;padding:8px;font-size:12px;color:var(--mute);text-align:center;background:var(--panel)}
 #__eyePop .diff div{padding:0 4px} #__eyePop .diff .d{background:var(--del)} #__eyePop .diff .a{background:var(--add)}
 #__eyePop .diff .d::before{content:"− ";color:var(--a)} #__eyePop .diff .a::before{content:"+ ";color:var(--ok)}
@@ -3492,8 +3649,13 @@ const EYE_CSS = `#__eyePop{--bg:#eef1f4;--panel:#fff;--ink:#1d2733;--mute:#5d6b7
 #__eyePop .er{color:var(--a);font-size:12.5px;font-weight:700}
 #__eyePop .prog{display:inline-block;width:70px;height:6px;border-radius:3px;background:var(--line);vertical-align:middle;overflow:hidden} #__eyePop .prog i{display:block;height:100%;background:var(--ok)}
 #__eyePop .help{font-size:12px;color:var(--mute);padding:6px 12px;border-top:1px solid var(--line);background:var(--soft)}
-#__eyeBig{position:fixed;inset:0;z-index:100002;background:rgba(10,14,20,.82);display:grid;place-items:center;padding:24px;cursor:zoom-out}
-#__eyeBig img{max-width:96vw;max-height:88vh;background:#fff;border-radius:6px} #__eyeBig p{color:#fff;margin:8px 0 0;text-align:center;font:13px sans-serif}
+#__eyeBig{position:fixed;inset:0;z-index:100002;background:rgba(10,14,20,.82);display:grid;align-items:start;justify-items:center;padding:4vh 24px 24px;cursor:zoom-out}
+#__eyeBig .bx{display:grid;gap:10px;max-height:94vh;max-width:97vw;overflow:auto;cursor:default}
+#__eyeBig .row{display:flex;gap:12px;align-items:flex-start;justify-content:center}
+#__eyeBig figure{margin:0} #__eyeBig img{display:block;width:min(1400px,94vw);max-height:86vh;object-fit:contain;object-position:left top;background:#fff;border-radius:6px}
+#__eyeBig .row.two img{width:calc((94vw - 12px) / 2)}
+#__eyeBig p{color:#fff;margin:0 0 4px;font:13px sans-serif} #__eyeBig .tip{text-align:center;margin:4px 0 0}
+#__eyeBig button{font:inherit;padding:3px 10px;border-radius:4px;border:1px solid #fff;background:transparent;color:#fff;cursor:pointer}
 #__eyeBusy{position:absolute;inset:0;z-index:5;background:rgba(10,14,20,.55);display:none;place-items:center}
 #__eyeBusy.on{display:grid} #__eyeBusy>div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px 24px;min-width:300px;display:grid;gap:10px;text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.4)}
 #__eyeBusy b{font-size:15px} #__eyeBusy .bar2{height:8px;border-radius:4px;background:var(--line);overflow:hidden} #__eyeBusy .bar2 i{display:block;height:100%;background:var(--accent);transition:width .3s}
@@ -3504,6 +3666,13 @@ const EYE_CSS = `#__eyePop{--bg:#eef1f4;--panel:#fff;--ink:#1d2733;--mute:#5d6b7
 #__eyePop .rulebox.none{border-color:var(--b);background:var(--mark-b)} #__eyePop .memo-top textarea{border-color:var(--b);min-height:70px}
 #__eyePop .next{padding:6px 14px;background:var(--soft);border-bottom:1px solid var(--line);font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap} #__eyePop .next b{color:var(--accent)}
 #__eyePop .hlp{padding:8px 14px 10px;background:var(--panel);border-bottom:1px solid var(--line);font-size:13px} #__eyePop .hlp ol{margin:6px 0;padding-left:20px;display:grid;gap:3px}
+#__eyePop .problem.mini{padding:6px 10px;gap:2px} #__eyePop .problem.mini .q{font-size:14px;line-height:1.45}
+#__eyePop .plist{display:grid;gap:4px} #__eyePop .more{font-size:12px;color:var(--mute)}
+#__eyePop .num.grp{width:auto;border-radius:9px;padding:0 7px}
+#__eyePop .grow{border:1px solid var(--line);border-radius:6px;padding:8px 10px;display:grid;gap:6px;background:var(--panel)}
+#__eyePop .grow.done{border-color:var(--ok)} #__eyePop .grow.off{background:var(--soft)}
+#__eyePop .gck{display:flex;gap:8px;align-items:center;font-size:12.5px;cursor:pointer;flex-wrap:wrap} #__eyePop .gck input{width:17px;height:17px;margin:0;cursor:pointer}
+#__eyePop .gck input:disabled{cursor:not-allowed} #__eyePop .grow .fx{font-size:13.5px} #__eyePop .grow .lab{font-size:11.5px;font-weight:700;color:var(--mute)}
 #__eyePop .rulebox.ok{border-color:var(--ok);background:var(--add)} #__eyePop .todo{color:var(--accent)} #__eyePop .chip.plan{color:var(--accent);border-color:var(--accent);font-weight:700}`;
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const eyeK = (it) => EYE_KIND[it.kind] || "B";
@@ -3520,12 +3689,13 @@ const eyeDiff = (a, b) => {
   return out.join("");
 };
 const eyeMsg = (it) => ((window.__eyeS.msgs || []).find((x) => x.index === it.index) || {});
+const EYE_LOAD = String(Date.now() + Math.random());
 function eyeUI() {
   let ov = document.getElementById("__eyePop");
-  if (ov && !ov.querySelector("#__eyeNext")) { ov.remove(); ov = null; document.getElementById("__eyeCss")?.remove(); }
+  if (ov && (!ov.querySelector("#__eyeNext") || ov.dataset.load !== EYE_LOAD)) { ov.remove(); ov = null; document.getElementById("__eyeCss")?.remove(); }
   if (ov) { ov.style.display = "flex"; return ov; }
   if (!document.getElementById("__eyeCss")) { const st = document.createElement("style"); st.id = "__eyeCss"; st.textContent = EYE_CSS; document.head.appendChild(st); }
-  ov = document.createElement("div"); ov.id = "__eyePop";
+  ov = document.createElement("div"); ov.id = "__eyePop"; ov.dataset.load = EYE_LOAD;
   ov.innerHTML = `<div class="bar"><b>👁 눈검수</b><span id="__eyeFile"></span><span id="__eyeMsg" class="note"></span><span class="sp"></span>
   <span id="__eyeToast" class="toast" role="status"></span><span id="__eyeCnt" class="note"></span>
   <button class="btn ghost" data-a="redo" type="button" title="문서를 다시 읽고 쪽 그림을 전부 새로 뽑음 · 자동 검사도 다시(찾은 것·판정·메모는 남음, AI 가 다시 보는 건 아님)">쪽 그림 새로 뽑기</button>
@@ -3617,22 +3787,81 @@ function eyeShow() {
   const p = S.pages && S.pages[S.cur];
   if (!p) { v.innerHTML = `<div class="wait">${S.busy ? "쪽 그림 뽑는 중…" : "쪽 그림 없음 — [다시 검수]"}</div>`; return; }
   const k = eyeScale(); document.getElementById("__eyeZ").textContent = Math.round(k / ((v.clientWidth - 46) / p.w) * 100) + "%";
-  const marks = (S.items || []).map((it) => { const b = p.boxes.find((x) => x.index === it.index); if (!b) return "";
-    const st = eyeStCls(it);
-    return `<div class="mk ${eyeK(it)}${st === "done" ? " done" : st === "no" ? " no" : ""}${S.open === it.id ? " on" : ""}" data-id="${it.id}" title="${esc(it.where + " · " + it.what)}" style="left:${b.x * k}px;top:${b.y * k}px;width:${b.w * k}px;height:${b.h * k}px"><span class="pin">${st === "done" ? "✓" : it.id}</span></div>`; }).join("");
+  const og = eyeOpenG(), marks = eyeGroups().flatMap((g) => [...new Set(g.items.map((x) => x.index))].map((ix) => {
+    const b = p.boxes.find((x) => x.index === ix); if (!b) return "";
+    const L = g.items.filter((x) => x.index === ix), st = eyeGSt(L), on = og === g && (!g.same || eyeGSel(g) === ix);
+    return `<div class="mk ${eyeK(L[0])}${st === "done" ? " done" : st === "no" ? " no" : ""}${on ? " on" : ""}" data-id="${L[0].id}" title="${esc(L[0].where + " · " + L.map((x) => x.what).join(" / "))}" style="left:${b.x * k}px;top:${b.y * k}px;width:${b.w * k}px;height:${b.h * k}px"><span class="pin">${st === "done" ? "✓" : eyePin(L.map((x) => x.id))}</span></div>`; })).join("");
   const top = v.scrollTop;
-  v.innerHTML = `<div class="page" style="width:${p.w * k}px"><img alt="${S.cur + 1}쪽 그림" src="${p.png}">${marks}</div>`;
+  v.innerHTML = `<div class="page" style="width:${p.w * k}px;height:${p.h * k}px"><img alt="${S.cur + 1}쪽 그림" src="${p.png}" width="${Math.round(p.w * k)}" height="${Math.round(p.h * k)}">${marks}</div>`;
   v.scrollTop = top;
-  if (S.goSel) { S.goSel = false; const it = S.items.find((x) => x.id === S.open), b = it && p.boxes.find((x) => x.index === it.index); if (b) v.scrollTop = Math.max(0, b.y * k - 60); }
+  if (S.goSel) { S.goSel = false; const it = S.items.find((x) => x.id === S.open), g = it && eyeOpenG();
+    const ix = S.goIdx != null ? S.goIdx : g && g.same ? eyeGSel(g) : it && it.index; S.goIdx = null;
+    const b = ix != null && p.boxes.find((x) => x.index === ix); if (b) v.scrollTop = Math.max(0, b.y * k - 60); }
 }
+const eyeGroups = () => {
+  const S = window.__eyeS, ok = (it) => it.src !== "규칙" && !it.spot, G = [], byIdx = new Map();
+  for (const it of S.items || []) {
+    if (ok(it) && byIdx.has(it.index)) { byIdx.get(it.index).items.push(it); continue; }
+    const g = { items: [it] }; G.push(g); if (ok(it)) byIdx.set(it.index, g);
+  }
+  const out = [], same = new Map();
+  for (const g of G) { const it = g.items[0];
+    if (g.items.length === 1 && ok(it) && it.from && it.what) { const key = it.what + "\u0000" + it.from;
+      if (same.has(key)) { same.get(key).items.push(it); continue; } same.set(key, g); }
+    out.push(g); }
+  for (const g of out) { g.id = g.items[0].id; g.multi = g.items.length > 1; g.same = g.multi && new Set(g.items.map((x) => x.index)).size > 1; }
+  return out;
+};
+const eyeGroupOf = (id) => eyeGroups().find((g) => g.items.some((x) => x.id === id));
+const eyeOpenG = () => { const S = window.__eyeS; return S.open == null ? null : eyeGroupOf(S.open) || null; };
+const eyePin = (ids) => { const a = [...ids].sort((x, y) => x - y); if (a.length === 1) return String(a[0]);
+  return a.every((x, i) => !i || x === a[i - 1] + 1) ? `${a[0]}~${a[a.length - 1]}` : `${a[0]}+${a.length - 1}`; };
+const eyeGSt = (L) => !L.every((x) => x.verdict) ? "new" : !L.every((x) => x.verdict === "반영 완료" || x.verdict === "현재 맞음") ? "part"
+  : L.some((x) => x.verdict === "반영 완료") ? "done" : "no";
+const eyeGSel = (g) => { const S = window.__eyeS, v = (S.gsel = S.gsel || {})[g.id]; return g.items.some((x) => x.index === v) ? v : g.items[0].index; };
+const eyeGPlan = (g) => {
+  const S = window.__eyeS, C = (S.gchk = S.gchk || {}), P = new Map(), cur = {}, orig = {};
+  const pri = (it) => typeof C[it.id] === "number" ? C[it.id] : Infinity;
+  for (const it of [...g.items].sort((a, b) => pri(a) - pri(b))) {
+    if (cur[it.index] == null) cur[it.index] = orig[it.index] = eyeMsg(it).latex || "";
+    const r = { chk: false, why: "" }; P.set(it.id, r);
+    if (it.applied) { r.done = true; continue; }
+    if (!it.from || !it.to) { r.noto = true; continue; }
+    const cnt = (s) => s.split(it.from).length - 1;
+    if (cnt(cur[it.index]) !== 1) {
+      const by = g.items.find((o) => o !== it && o.index === it.index && o.from && o.to && (o.applied || P.get(o.id) && P.get(o.id).chk)
+        && cnt(o.applied ? orig[it.index] : orig[it.index].replace(o.from, o.to)) !== 1);
+      r.why = !by ? "지금 원문에 이 글이 한 곳으로 없어요 — 고칠 수 없음(판정만)"
+        : by.applied ? `#${by.id} 반영으로 이 자리 글이 바뀌었어요 — 같이 못 고쳐요`
+        : `#${by.id} 와 같은 글자를 고쳐요 — 같이 못 골라요(#${by.id} 체크를 빼면 고를 수 있음)`;
+      if (C[it.id] == null) C[it.id] = false;
+      continue;
+    }
+    r.chk = C[it.id] != null ? !!C[it.id] : !it.verdict;
+    if (r.chk) cur[it.index] = cur[it.index].replace(it.from, it.to);
+  }
+  P.lx = cur; return P;
+};
 function eyeCards() {
   const S = window.__eyeS, box = document.getElementById("__eyeCards"); if (!box) return;
   eyeBar();
   const keep = box.scrollTop;
-  const list = S.items || [];
-  box.innerHTML = list.length ? list.map(eyeCard).join("") : `<div class="empty">${S.busy ? "쪽 그림을 뽑는 중…" : "찾은 것 없음 — 크롬 AI 에게 \"눈검수 해줘\"라고 하면 찾아서 여기 올립니다."}</div>`;
-  box.scrollTop = keep;
-  const it = list.find((x) => x.id === S.open); if (it) eyeBA(it);
+  const list = S.items || [], G = eyeGroups(), og = G.find((g) => g.items.some((x) => x.id === S.open));
+  box.innerHTML = list.length ? G.map((g) => g.multi ? eyeGroupCard(g) : eyeCard(g.items[0])).join("") : `<div class="empty">${S.busy ? "쪽 그림을 뽑는 중…" : "찾은 것 없음 — 크롬 AI 에게 \"눈검수 해줘\"라고 하면 찾아서 여기 올립니다."}</div>`;
+  const gid = og ? og.id : null, fresh = gid != null && (gid !== S._lastG || S.cardTop);
+  let want = keep;
+  if (list.length) {
+    box.insertAdjacentHTML("beforeend", `<div class="tail" style="height:0"></div>`);
+    const z = box.offsetHeight / (box.getBoundingClientRect().height || box.offsetHeight || 1), y0 = box.getBoundingClientRect().top;
+    const at = (el) => box.scrollTop + (el.getBoundingClientRect().top - y0) * z;
+    const c = fresh && box.querySelector(".card.on"), tl = box.querySelector(".tail");
+    if (c) want = at(c) - 6;
+    const need = want + box.clientHeight - at(tl);
+    if (need > -200) tl.style.height = Math.ceil(need + 200) + "px";
+  }
+  box.scrollTop = want;
+  S._lastG = gid; S.cardTop = false;
+  if (og && og.multi) eyeGroupBA(og); else { const it = list.find((x) => x.id === S.open); if (it) eyeBA(it); }
 }
 const eyeWho = (it) => it.src === "규칙" ? `<span class="who tool">자동 검사</span>` : `<span class="who">AI 눈검사 · 확신 ${esc(it.conf)}</span>`;
 const eyeRuleOf = (it) => {
@@ -3666,7 +3895,7 @@ function eyeGate(o, m, k) {
   if (/첨자|아래 숫자|작은 숫자/.test(w) && /\\w?frac\{[^{}]*[_^]/.test(from)) return { rule: "화질", why: "분수 안 첨자는 한 단계 작게 그려져 화면에서 뭉개져 보임 — 원문·인쇄는 정상" };
   if (EYE_SAY.shape.test(w) && /(화질|해상도|화면)\s*(탓|때문|문제로 보|으로 보|로 보)/.test(`${w} ${o.seen || ""}`))
     return { rule: "화질", why: "원문 수식은 정상(AI 도 화질 탓으로 봄) — 같은 원문은 같은 모양으로 그려짐" };
-  if (EYE_SAY.tail.test(w) && !/네모|□/.test(w) && !/\\\\|\\hblinebreak|\\newline|\\par\b/.test(from))
+  if (EYE_SAY.tail.test(w) && !/네모|□/.test(w) && !/\\\\|\\hblinebreak|\\newline|\\par\b|\\tab\b/.test(from))
     return { rule: "렌더", why: "줄 나눔 명령이 없는 문단 — 다음 줄이 수식으로 시작하면 화면이 앞 줄을 양쪽으로 안 늘림(일부러 그렇게 만듦)" };
   if (k && EYE_SAY.gap.test(w) && !/어긋|안 맞|맞지 않|맞춰|열|자리|위치|겹|같은 꼴|다르게|다른 곳|일관|\d{4}[^.]{0,6}(은|는|과|와)/.test(w)) for (const [re, ids, say] of EYE_SPACE[k] || []) {
     const rest = from.replace(new RegExp(re.source, "g"), " ").replace(/\\hspace\*\{0\.01mm\}/g, " ");
@@ -3703,7 +3932,7 @@ const eyeOkRule = (it, lx) => {
 };
 function eyeCard(it) {
   const S = window.__eyeS, on = S.open === it.id, st = eyeStCls(it), m = eyeMsg(it), lx = m.latex || "";
-  const head = `<div class="hd" data-id="${it.id}"><div class="top">${st === "done" ? '<span class="tick">✓</span>' : `<span class="num">${it.id}</span>`}<span class="pill ${eyeK(it)}">${esc(it.kind)}</span><span class="where">${esc(it.where)}</span>${eyeWho(it)}${it.verdict ? `<span class="chip s-${st}">${esc(it.verdict)}</span>` : ""}${it.outside ? '<span class="chip out">밖에서 고쳐짐</span>' : ""}${it.stale ? '<span class="chip out" title="기록을 저장한 뒤 이 자리 원문이 바뀜 — 지금 원문을 보고 다시 판정">원문 바뀜</span>' : ""}${it.lost ? '<span class="chip out" title="기록엔 적용했지만 이 문서엔 없음(💾 저장 전에 닫혔나?)">적용 빠짐</span>' : ""}${it.plan && !it.applied ? '<span class="chip plan">AI 고칠 안</span>' : ""}</div><div class="what">${esc(it.what)}</div></div>`;
+  const head = `<div class="hd" data-id="${it.id}"><div class="top">${st === "done" ? '<span class="tick">✓</span>' : `<span class="num">${it.id}</span>`}<span class="pill ${eyeK(it)}">${esc(it.kind)}</span><span class="where">${esc(it.where)}</span>${eyeWho(it)}${it.verdict ? `<span class="chip s-${st}">${esc(it.verdict)}</span>` : ""}${it.outside ? '<span class="chip out">밖에서 고쳐짐</span>' : ""}${it.stale ? '<span class="chip out" title="기록을 저장한 뒤 이 자리 원문이 바뀜 — 지금 원문을 보고 다시 판정">원문 바뀜</span>' : ""}${it.lost ? '<span class="chip out" title="기록엔 적용했지만 이 문서엔 없음(💾 저장 전에 닫혔나?)">적용 빠짐</span>' : ""}${it.plan && !it.applied ? '<span class="chip plan">AI 고칠 안</span>' : ""}</div>${on ? "" : eyeProbMini(it)}</div>`;
   if (!on) return `<div class="card${st === "done" ? " done" : ""}">${head}</div>`;
   const R = eyeRuleOf(it), has = R.chk.length || R.line.length, big = R.fix ? "rule" : it.to && !it.applied ? "ai" : "mine";
   const key = it.applied ? it.applied.to : it.from, at = key && key.length < 400 && !(it.applied && it.applied.how && it.applied.how !== "추천대로") ? lx.indexOf(key) : -1;
@@ -3718,7 +3947,7 @@ function eyeCard(it) {
     : `<div class="rulebox none"><div class="lab">조판 규칙</div><div>조판 규칙에 아직 없음 — 어떻게 고치면 되는지 메모를 남겨 주세요</div></div>`;
   const mode = S.mode[it.id] || (big === "mine" || !it.to ? "mine" : "ai");
   let ba = "";
-  if (S.ba[it.id] !== false) {
+  if (S.ba[it.id] !== false && (lx || it.applied)) {
     const seg = it.to ? `<div class="seg"><button type="button" data-mode="ai" data-id="${it.id}" aria-pressed="${mode === "ai"}">추천대로</button><button type="button" data-mode="mine" data-id="${it.id}" aria-pressed="${mode === "mine"}">직접 고치기</button></div>` : "";
     const how = it.applied && (it.applied.how || (it.applied.mine ? "직접" : "추천대로"));
     if (it.applied) ba = `<div class="ba"><figure><figcaption>전(적용 전)</figcaption><img data-b="before" alt="적용 전"></figure><figure><figcaption>후(지금 — ${esc(how)})</figcaption><img data-b="after" alt="지금"></figure></div>
@@ -3745,6 +3974,7 @@ function eyeCard(it) {
     ${ruleBox}
     ${noRule ? memo(true) : ""}
     ${part ? `<div><div class="k">원문 LaTeX (해당 부분)<button class="s" type="button" data-copy="src" data-id="${it.id}">복사</button></div><code>${esc(part)}</code></div>` : ""}
+    ${it.spot ? `<div><div class="k">원문 — 청크 LaTeX 밖(표 칸·속성) · 자리만 알림, 고치기 버튼 없음</div><code>${esc(it.spot)}</code></div>` : ""}
     <div class="tools"><button class="s" type="button" data-full="${it.id}" aria-pressed="${!!S.full[it.id]}">전체 LaTeX(이 청크)</button><button class="s" type="button" data-ba="${it.id}" aria-pressed="${S.ba[it.id] !== false}">전/후 보기</button></div>
     ${S.full[it.id] ? `<div><div class="k">이 청크 전체 LaTeX<button class="s" type="button" data-copy="full" data-id="${it.id}">복사</button></div><code class="full">${esc(lx)}</code></div>` : ""}
     ${it.err ? `<div class="er">${esc(it.err)}</div>` : ""}
@@ -3754,14 +3984,91 @@ function eyeCard(it) {
     ${noRule ? "" : memo(false)}
   </div></div>`;
 }
+const eyeProbMini = (it, pre) => `<div class="problem mini ${eyeK(it)}"><div class="lab">무엇이 문제인가${pre ? " · " + esc(pre) : ""}</div><div class="q">${esc(it.what)}</div></div>`;
+function eyeGroupCard(g) {
+  const S = window.__eyeS, L = g.items, on = L.some((x) => x.id === S.open), st = eyeGSt(L), P = on ? eyeGPlan(g) : null;
+  const nV = L.filter((x) => x.verdict).length, kinds = [...new Set(L.map((x) => x.kind))];
+  const where = g.same ? `${L[0].where} 외 ${L.length - 1}곳` : L[0].where;
+  const head = `<div class="hd" data-id="${g.id}"><div class="top">${st === "done" ? '<span class="tick">✓</span>' : ""}<span class="num grp">#${L.map((x) => x.id).join("·")}</span>${kinds.map((k) => `<span class="pill ${EYE_KIND[k] || "B"}">${esc(k)}</span>`).join("")}<span class="where">${esc(where)}</span><span class="chip">${g.same ? `같은 꼴 ${L.length}곳` : `${L.length}곳`}</span>${eyeWho(L[0])}${nV ? `<span class="chip${nV === L.length ? " s-done" : ""}">판정 ${nV}/${L.length}</span>` : ""}${L.some((x) => x.plan && !x.applied) ? '<span class="chip plan">AI 고칠 안</span>' : ""}</div>`
+    + (on ? "" : g.same ? `<div class="plist">${eyeProbMini(L[0])}<div class="more">${esc(L.map((x) => x.where).join(" · "))}</div></div>`
+      : `<div class="plist">${(L.length > 3 ? L.slice(0, 3) : L).map((x) => eyeProbMini(x, "#" + x.id)).join("")}${L.length > 3 ? `<div class="more">외 ${L.length - 3}곳</div>` : ""}</div>`) + `</div>`;
+  if (!on) return `<div class="card${st === "done" ? " done" : ""}">${head}</div>`;
+  const sel = eyeGSel(g), m = (S.msgs || []).find((x) => x.index === sel) || {}, lx = m.latex || "";
+  const rows = L.map((it) => { const r = P.get(it.id), off = !r.done && !r.chk;
+    const ck = r.done ? `<span class="tick">✓</span>` : `<input type="checkbox" data-gck="${it.id}"${r.chk ? " checked" : ""}${r.noto || r.why ? " disabled" : ""} title="${r.noto ? "고칠 안이 없는 추천 — 판정만" : "체크한 것만 [고른 것 적용] 때 고쳐요"}">`;
+    return `<div class="grow${r.done ? " done" : off ? " off" : ""}"><label class="gck">${ck}<span class="num">${it.id}</span>${g.same ? `<b>${esc(it.where)}</b>` : ""}${eyeWho(it)}${it.verdict ? `<span class="chip s-${eyeStCls(it)}">${esc(it.verdict)}</span>` : ""}${it.plan && !it.applied ? '<span class="chip plan">AI 고칠 안</span>' : ""}</label>
+      <div class="problem mini ${eyeK(it)}"><div class="lab">무엇이 문제인가</div><div class="q">${esc(it.what)}</div></div>
+      ${it.fix ? `<div><div class="lab">고칠 방법</div><div class="fx">${esc(it.fix)}</div></div>` : ""}
+      ${r.done ? `<div class="code diff">${eyeDiff(it.applied.from, it.applied.to)}</div><div class="donebar">✓ 반영 완료 (${esc(it.applied.how || "추천대로")})<button class="s" type="button" data-undo="${it.id}">되돌리기</button></div>`
+        : it.to ? `<div class="code diff">${eyeDiff(it.from, it.to)}</div>` : `<div class="note">고칠 안이 없는 추천 — 판정만(어떻게 고칠지 메모 → 고쳐줘)</div>`}
+      ${r.why ? `<div class="er">${esc(r.why)}</div>` : ""}${it.err ? `<div class="er">${esc(it.err)}</div>` : ""}
+      ${off ? `<div class="st"><span class="note">체크 안 함 →</span>${EYE_ST.map(([n]) => `<button class="s" type="button" data-st="${n}" data-id="${it.id}" aria-pressed="${it.verdict === n}">${n}</button>`).join("")}${it.verdict ? "" : '<span class="note">안 고르면 보류</span>'}</div>` : ""}
+      <div class="tools"><button class="s" type="button" data-gmemo="${it.id}" aria-pressed="${!!(S.gmemo || {})[it.id]}">메모${it.memo ? " ✎" : ""}</button></div>
+      ${(S.gmemo || {})[it.id] ? `<textarea data-memo="${it.id}" placeholder="예: 둘째 줄도 첫 줄처럼 들여 시작 / 원고가 원래 이래요">${esc(it.memo)}</textarea>` : ""}</div>`; }).join("");
+  const nChk = L.filter((x) => P.get(x.id).chk).length, left = L.filter((x) => !x.applied && !P.get(x.id).chk && !x.verdict).length;
+  const c = (S.chk || {})[sel] || [];
+  const spots = g.same ? `<div class="seg">${L.map((x) => `<button type="button" data-gsel="${x.index}" data-id="${g.id}" aria-pressed="${x.index === sel}">${esc(x.where)}</button>`).join("")}</div>` : "";
+  return `<div class="card on${st === "done" ? " done" : ""}">${head}<div class="body">
+    ${rows}
+    ${c.length ? `<div class="rulebox"><div class="lab">조판 규칙</div><ul>${c.map((x) => `<li title="${esc(x.rule)}">조판 규칙과 다른 꼴 — ${esc(x.what)}</li>`).join("")}</ul></div>` : ""}
+    <div><div class="k">전/후 — 체크한 추천만 차례로 반영${g.same ? " · 자리 골라 보기" : ""}</div>${spots}</div>
+    <div class="ba"><figure><figcaption>전(지금${g.same ? " · " + esc(S.where[sel] || "") : ""})</figcaption><img data-b="before" alt="지금"></figure><figure><figcaption>후(체크한 것 ${L.filter((x) => x.index === sel && P.get(x.id).chk).length}개 반영)</figcaption><img data-b="after" alt="체크한 것 반영"></figure></div>
+    <div class="tools"><button class="s" type="button" data-full="${g.id}" aria-pressed="${!!S.full[g.id]}">전체 LaTeX(${g.same ? "이 자리" : "이 청크"})</button></div>
+    ${S.full[g.id] ? `<div><div class="k">${esc(S.where[sel] || "")} 전체 LaTeX<button class="s" type="button" data-copy="full" data-id="${g.id}">복사</button></div><code class="full">${esc(lx)}</code></div>` : ""}
+    ${S.gerr && S.gerr[g.id] ? `<div class="er">${esc(S.gerr[g.id])}</div>` : ""}
+    <div class="tools"><button class="btn" type="button" data-gapply="${g.id}"${nChk || left ? "" : " disabled"}>${nChk ? `고른 것 적용 (${nChk})` : "판정 마치기"}</button><button class="s go" type="button" data-gapply="${g.id}" data-next="1"${nChk || left ? "" : " disabled"}>${nChk ? "적용하고 다음" : "마치고 다음"}</button>
+      <span class="note">${left ? `체크 안 하고 판정 안 한 ${left}개는 보류로` : nChk ? "체크한 것은 청크 LaTeX 창으로 고쳐요(되돌리기 됨)" : "다 판정함"}</span></div>
+  </div></div>`;
+}
+async function eyeGroupBA(g) {
+  const S = window.__eyeS, sel = eyeGSel(g), m = (S.msgs || []).find((x) => x.index === sel); if (!m || !m.latex) return;
+  const P = eyeGPlan(g), lx = P.lx[sel] != null ? P.lx[sel] : m.latex, wm = await window.__eyeMsgWmm(m), key = `${sel}:${m.latex.length}:${lx}`;
+  const C = (S._gpng = S._gpng || {});
+  if (!C[key]) C[key] = (async () => { const b = (await window.__eyeRender(m.latex, { wmm: wm })).png, a = lx === m.latex ? b : (await window.__eyeRender(lx, { wmm: wm }));
+    return { b, a: typeof a === "string" ? a : a.png, err: typeof a === "string" || a.ok ? "" : "후 그림을 못 그림 — " + a.error }; })();
+  const r = await C[key];
+  const card = document.querySelector("#__eyeCards .card.on"), og = eyeOpenG(); if (!card || !og || og.id !== g.id || eyeGSel(og) !== sel) return;
+  const P2 = eyeGPlan(og); if ((P2.lx[sel] != null ? P2.lx[sel] : m.latex) !== lx) return;
+  const ba = card.querySelector(".ba"); if (!ba) return; ba.dataset.wmm = wm || "";
+  const pg = (S.pages || []).find(Boolean), pw = (((S.msgs || []).find((x) => x.type === "meta") || {}).pageLayout || {}).pageWidthMM, pxmm = pg && pw ? (pg.w / pw) * eyeScale() : 0;
+  ba.querySelectorAll("img").forEach((el) => { if (pxmm && wm) el.style.width = Math.round(wm * pxmm) + "px"; });
+  const put = (s, png) => { const im = ba.querySelector(`img[data-b="${s}"]`); if (im && png) im.src = png; };
+  put("before", r.b); put("after", r.a);
+  if (r.err) { const e = document.createElement("div"); e.className = "er"; e.textContent = r.err; ba.after(e); }
+}
+async function eyeGApply(g) {
+  const S = window.__eyeS, P = eyeGPlan(g), out = [];
+  for (const it of g.items) if (P.get(it.id).chk && !it.applied) { const r = await window.__eyeApply(it.id); if (!it.applied) out.push(`#${it.id} ${r}`); }
+  for (const it of g.items) if (!it.applied && !P.get(it.id).chk && !it.verdict) it.verdict = "보류";
+  (S.gerr = S.gerr || {})[g.id] = out.join(" · ");
+  eyeSave();
+  const n = g.items.filter((x) => P.get(x.id).chk && x.applied).length;
+  return out.length ? `반영 ${n} · 못 한 것: ${out.join(" · ")}` : `반영 ${n} · 나머지는 고른 판정대로`;
+}
 const eyeLint = (bad) => bad.length ? `<div class="lint bad">✗ 적용할 수 없음 — ${esc(bad.join(" · "))}</div>` : `<div class="lint ok">✓ 문법 짝 맞음 · 적용 전에 렌더로 한 번 더 확인(넘침·처음 보는 명령은 막음)</div>`;
+function eyeBig(ba) {
+  const F = [...ba.querySelectorAll("figure")].map((f) => { const el = f.querySelector("img, canvas");
+    return { cap: f.querySelector("figcaption").textContent, src: !el ? "" : el.tagName === "IMG" ? el.getAttribute("src") ? el.src : "" : el.toDataURL() }; }).filter((x) => x.src);
+  if (!F.length) return;
+  document.getElementById("__eyeBig")?.remove();
+  const bg = document.createElement("div"); bg.id = "__eyeBig"; let flip = -1;
+  const zm = parseFloat(getComputedStyle(document.documentElement).zoom) || 1, W = innerWidth / zm;
+  const wmm = +ba.dataset.wmm || 0, wpx = (n) => wmm ? Math.round(wmm * Math.min(8, (W * 0.94 - 12 * (n - 1)) / n / wmm)) : 0;
+  const draw = () => { const L = flip < 0 ? F : [F[flip]], w = wpx(L.length);
+    bg.innerHTML = `<div class="bx"><div class="row${L.length > 1 ? " two" : ""}">${L.map((x) => `<figure><p>${esc(x.cap)}</p><img src="${x.src}"${w ? ` style="width:${w}px;max-height:none"` : ""}></figure>`).join("")}</div>
+    <p class="tip">${F.length > 1 ? `<button type="button" data-flip>${flip < 0 ? "번갈아 보기" : "나란히 보기"}</button> 스페이스 = 전↔후 · ` : ""}바깥·Esc = 닫기</p></div>`; };
+  const close = () => { bg.remove(); document.removeEventListener("keydown", key, true); };
+  const key = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); close(); }
+    else if (e.key === " " && F.length > 1) { e.preventDefault(); e.stopImmediatePropagation(); flip = flip < 0 ? 0 : 1 - flip; draw(); } };
+  bg.onclick = (e) => { if (e.target.closest("[data-flip]")) { flip = flip < 0 ? 0 : -1; draw(); return; } if (!e.target.closest("img")) close(); };
+  document.addEventListener("keydown", key, true); draw(); document.body.appendChild(bg);
+}
 async function eyeClick(e) {
   const S = window.__eyeS, t0 = e.target;
-  if (t0.closest(".ba img, .ba canvas")) { const el = t0.closest("img, canvas"), src = el.tagName === "IMG" ? el.src : el.toDataURL();
-    if (!src) return; const bg = document.createElement("div"); bg.id = "__eyeBig"; bg.innerHTML = `<div><img src="${src}"><p>${esc(el.closest("figure").querySelector("figcaption").textContent)} · 누르면 닫기</p></div>`; bg.onclick = () => bg.remove(); document.body.appendChild(bg); return; }
-  const t = t0.closest("[data-a],[data-page],[data-z],[data-st],[data-full],[data-ba],[data-mode],[data-copy],[data-goto],[data-apply],[data-reset],[data-undo],.mk,.hd"); if (!t) return;
+  if (t0.closest(".ba img, .ba canvas")) { eyeBig(t0.closest(".ba")); return; }
+  const t = t0.closest("[data-a],[data-page],[data-z],[data-st],[data-full],[data-ba],[data-mode],[data-copy],[data-goto],[data-apply],[data-reset],[data-undo],[data-gck],[data-gmemo],[data-gsel],[data-gapply],.mk,.hd"); if (!t) return;
   if (t.classList.contains("hd") && String(window.getSelection()).trim()) return;
-  const d = t.dataset, a = d.a, id = +(d.id || d.undo || d.full || d.ba || d.goto || d.reset || 0), it = S.items.find((x) => x.id === id);
+  const d = t.dataset, a = d.a, id = +(d.id || d.undo || d.full || d.ba || d.goto || d.reset || d.gck || d.gmemo || d.gapply || 0), it = S.items.find((x) => x.id === id);
   if (a === "close") { document.getElementById("__eyePop").style.display = "none"; return; }
   if (a === "help") { const h = document.getElementById("__eyeHelp"); h.hidden = !h.hidden; return; }
   if (a === "say") { try { await navigator.clipboard.writeText(d.say); eyeToast(`"${d.say}" 복사함 — 크롬 AI 대화창에 붙여 넣기`); } catch (err) { eyeToast(`복사가 막혀 있음 — 직접 "${d.say}" 라고 쓰기`); } return; }
@@ -3776,18 +4083,33 @@ async function eyeClick(e) {
   if (t.dataset.z) { const z = t.dataset.z; S.zoom = z === "w" ? "폭" : z === "h" ? "쪽" : Math.max(0.2, Math.min(4, eyeScale() * (z === "1" ? 1.25 : 0.8))); eyeShow(); return; }
   if (!it) return;
   if (t.classList.contains("mk") || t.classList.contains("hd")) {
-    S.open = S.open === id && t.classList.contains("hd") ? null : id;
-    const k = eyePageOf(it.index); if (k >= 0) S.cur = k; S.goSel = true; eyeShow(); eyeCards();
-    if (t.classList.contains("mk")) document.querySelector(`#__eyeCards .card.on`)?.scrollIntoView({ block: "nearest" });
+    const g = eyeGroupOf(id) || { id, items: [it] }, isOpen = g.items.some((x) => x.id === S.open), mk = t.classList.contains("mk");
+    if (mk) { S.open = id; S.cardTop = true; if (g.same) (S.gsel = S.gsel || {})[g.id] = it.index; }
+    else S.open = isOpen ? null : g.id;
+    const ix = mk ? it.index : g.same ? eyeGSel(g) : it.index, k = eyePageOf(ix);
+    if (S.open != null) { if (k >= 0) S.cur = k; S.goSel = true; S.goIdx = ix; }
+    eyeShow(); eyeCards();
     return;
   }
+  if (d.gck) { const on = !!t0.closest("input")?.checked; (S.gchk = S.gchk || {})[id] = on ? Date.now() : false;
+    if (on && it.verdict && it.verdict !== "반영 완료") it.verdict = "";
+    eyeSave(); eyeShow(); eyeCards(); return; }
+  if (d.gmemo) { S.gmemo = S.gmemo || {}; S.gmemo[id] = !S.gmemo[id]; eyeCards();
+    if (S.gmemo[id]) document.querySelector(`#__eyeCards textarea[data-memo="${id}"]`)?.focus({ preventScroll: false }); return; }
+  if (d.gsel) { const g = eyeGroupOf(id); if (!g) return; (S.gsel = S.gsel || {})[g.id] = +d.gsel; const k = eyePageOf(+d.gsel);
+    if (k >= 0) S.cur = k; S.goSel = true; S.goIdx = +d.gsel; eyeShow(); eyeCards(); return; }
+  if (d.gapply) { const g = eyeGroupOf(id); if (!g) return;
+    t.disabled = true; t.textContent = "적용 중…"; const r = await eyeGApply(g); eyeToast(r);
+    if (d.next) { const nx = S.items.find((x) => x.id > Math.max(...g.items.map((y) => y.id)) && !x.verdict) || S.items.find((x) => !x.verdict && !g.items.includes(x));
+      if (nx) { S.open = nx.id; const k = eyePageOf(nx.index); if (k >= 0) S.cur = k; S.goSel = true; S.goIdx = nx.index; } }
+    eyeShow(); eyeCards(); return; }
   if (t.dataset.st) { it.verdict = it.verdict === t.dataset.st ? "" : t.dataset.st; eyeSave(); eyeShow(); eyeCards(); return; }
   if (t.dataset.full) { S.full[id] = !S.full[id]; eyeCards(); return; }
   if (t.dataset.ba) { S.ba[id] = S.ba[id] === false; eyeCards(); return; }
   if (t.dataset.mode) { S.mode[id] = t.dataset.mode; eyeCards(); if (t.dataset.mode === "mine") eyeGoto(it, false); return; }
   if (t.dataset.goto) { eyeGoto(it, true); return; }
   if (t.dataset.reset) { delete S.mine[id]; it._mine = null; eyeCards(); return; }
-  if (t.dataset.copy) { const lx = eyeMsg(it).latex || "", key = it.applied ? it.applied.to : it.from;
+  if (t.dataset.copy) { const g = eyeGroupOf(id), gm = g && g.multi && (S.msgs || []).find((x) => x.index === eyeGSel(g)), lx = (gm || eyeMsg(it)).latex || "", key = it.applied ? it.applied.to : it.from;
     try { await navigator.clipboard.writeText(t.dataset.copy === "full" ? lx : key); eyeToast(t.dataset.copy === "full" ? "전체 LaTeX 복사함" : "원문 복사함"); } catch (err) { eyeToast("복사가 막혀 있음 — 글을 드래그해서 복사"); } return; }
   t.disabled = true; const old = t.textContent; t.textContent = "확인 중…";
   let r = "";
@@ -3800,7 +4122,8 @@ async function eyeClick(e) {
   } catch (err) { r = "멈춤: " + err.message; it.err = r; }
   eyeToast(r);
   if (/next/.test(t.dataset.apply || "") && it.verdict === "반영 완료") { const nx = S.items.find((x) => x.id > id && !x.verdict) || S.items.find((x) => !x.verdict);
-    if (nx) { S.open = nx.id; const k = eyePageOf(nx.index); if (k >= 0) S.cur = k; S.goSel = true; } }
+    if (nx) { S.open = nx.id; const k = eyePageOf(nx.index), ng = eyeGroupOf(nx.id); if (k >= 0) S.cur = k; S.goSel = true; S.goIdx = nx.index;
+      if (ng && ng.same) (S.gsel = S.gsel || {})[ng.id] = nx.index; } }
   t.textContent = old; eyeShow(); eyeCards();
 }
 let eyeTimer = 0;
@@ -3813,25 +4136,33 @@ function eyeInput(e) {
   card.querySelector(`[data-mdiff="${id}"]`).innerHTML = same ? "<div>아직 바뀐 곳 없음</div>" : eyeDiff(lx, v);
   card.querySelectorAll("[data-apply]").forEach((b) => (b.disabled = !!(bad.length || same)));
   clearTimeout(eyeTimer);
-  eyeTimer = setTimeout(async () => { if (bad.length) return; const r = await window.__eyeRender(v, { wmm: S.wmm }); const img = card.querySelector('img[data-b="mine"]'); if (img && r.png) img.src = r.png; }, 600);
+  eyeTimer = setTimeout(async () => { if (bad.length) return; const r = await window.__eyeRender(v, { wmm: await window.__eyeMsgWmm(eyeMsg(it)) }); const img = card.querySelector('img[data-b="mine"]'); if (img && r.png) img.src = r.png; }, 600);
 }
 function eyeGoto(it, focus) {
   const ta = document.querySelector(`#__eyeCards textarea[data-mine="${it.id}"]`); if (!ta) return;
   const key = it.from || ""; const at = key ? ta.value.indexOf(key) : -1;
   if (at < 0) { if (focus) eyeToast("해당 부분을 못 찾음 — 고친 뒤 글이 달라졌을 수 있음"); return; }
   ta.focus({ preventScroll: true }); ta.setSelectionRange(at, at + key.length);
-  const lh = parseFloat(getComputedStyle(ta).lineHeight) || 18; ta.scrollTop = Math.max(0, (ta.value.slice(0, at).split("\n").length - 2) * lh);
+  const cs = getComputedStyle(ta), mir = document.createElement("div");
+  for (const p of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "paddingTop", "tabSize"]) mir.style[p] = cs[p];
+  Object.assign(mir.style, { position: "absolute", visibility: "hidden", left: "-9999px", top: "0", boxSizing: "content-box",
+    width: ta.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) + "px", whiteSpace: "pre-wrap", overflowWrap: "break-word", wordBreak: cs.wordBreak });
+  mir.textContent = ta.value.slice(0, at); const mk = document.createElement("span"); mk.textContent = "​"; mir.appendChild(mk);
+  document.body.appendChild(mir); const y = mk.offsetTop; mir.remove();
+  ta.scrollTop = Math.max(0, y - ta.clientHeight / 2 + (parseFloat(cs.lineHeight) || 18));
+  if (focus) ta.scrollIntoView({ block: "nearest" });
 }
 async function eyeBA(it) {
   const S = window.__eyeS, m = eyeMsg(it); if (!m.latex) return;
+  const wm = await window.__eyeMsgWmm(m); it.wmm = wm;
   const k = `${m.latex.length}:${it.applied ? it.applied.to.length : it.to}`;
   if (it._ba !== k) {
     if (it._baK !== k) {
       it._baK = k;
       it._baP = (async () => {
         let b = "", a = "", err = "";
-        if (it.applied) { b = (await window.__eyeRender(m.latex.replace(it.applied.to, it.applied.from), { wmm: S.wmm })).png; a = (await window.__eyeRender(m.latex, { wmm: S.wmm })).png; }
-        else { const r0 = await window.__eyeRender(m.latex, { wmm: S.wmm }); b = r0.png; if (!r0.ok) err = "전 그림을 못 그림 — " + r0.error;
+        if (it.applied) { b = (await window.__eyeRender(m.latex.replace(it.applied.to, it.applied.from), { wmm: wm })).png; a = (await window.__eyeRender(m.latex, { wmm: wm })).png; }
+        else { const r0 = await window.__eyeRender(m.latex, { wmm: wm }); b = r0.png; if (!r0.ok) err = "전 그림을 못 그림 — " + r0.error;
           if (it.to) { const t = await window.__eyeTry(S.msgs, it.index, it.from, it.to); a = t.after && t.after.png; if (t.block) err = "추천대로 하면 막힘 — " + t.block; } }
         it.beforePng = b; it.afterPng = a; it._ba = k;
         if (err && it.err !== err) { it.err = err; eyeCards(); }
@@ -3842,11 +4173,16 @@ async function eyeBA(it) {
   const k0 = it._lineK, ln = await eyeLine(it);
   if (k0 !== it._lineK && S.open === it.id && (ln.length || eyeOkRule(it, eyeMsg(it).latex))) { eyeCards(); return; }
   const card = document.querySelector("#__eyeCards .card.on"); if (!card || S.open !== it.id) return;
+  const pg = (S.pages || []).find(Boolean), pw = (((S.msgs || []).find((x) => x.type === "meta") || {}).pageLayout || {}).pageWidthMM;
+  const pxmm = pg && pw ? (pg.w / pw) * eyeScale() : 0, ba = card.querySelector(".ba");
+  if (ba) ba.dataset.wmm = it.wmm || "";
+  const fit = (el) => { if (el && pxmm && it.wmm) el.style.width = Math.round(it.wmm * pxmm) + "px"; };
+  card.querySelectorAll(".ba img, .ba canvas").forEach(fit);
   const put = (sel, png) => { const im = card.querySelector(`img[data-b="${sel}"]`); if (im && png) im.src = png; };
   put("before", it.beforePng); put("after", it.afterPng);
   const fx = !it.applied && (S.fixTo || {})[it.index];
-  if (fx && card.querySelector('img[data-b="rule"]')) { if (it._ruleK !== fx.latex) { it._ruleK = fx.latex; it.rulePng = (await window.__eyeRender(fx.latex, { wmm: S.wmm })).png; } put("rule", it.rulePng); }
-  if (S.mine[it.id] != null && !window.__eyeSyntax(S.mine[it.id]).length) put("mine", (await window.__eyeRender(S.mine[it.id], { wmm: S.wmm })).png); else put("mine", it.beforePng);
+  if (fx && card.querySelector('img[data-b="rule"]')) { if (it._ruleK !== fx.latex) { it._ruleK = fx.latex; it.rulePng = (await window.__eyeRender(fx.latex, { wmm: wm })).png; } put("rule", it.rulePng); }
+  if (S.mine[it.id] != null && !window.__eyeSyntax(S.mine[it.id]).length) put("mine", (await window.__eyeRender(S.mine[it.id], { wmm: wm })).png); else put("mine", it.beforePng);
   const cv = card.querySelector(`canvas[data-crop="${it.id}"]`), k2 = eyePageOf(it.index), p = k2 >= 0 && S.pages[k2], b = p && p.boxes.find((x) => x.index === it.index);
   if (cv && b) { const im = new Image(); im.onload = () => { cv.width = Math.round(b.w); cv.height = Math.round(b.h); cv.getContext("2d").drawImage(im, b.x, b.y, b.w, b.h, 0, 0, cv.width, cv.height); }; im.src = p.png; }
 }
@@ -3858,5 +4194,7 @@ window.__eyeButton = () => {
     const r = window.__eyeOpen(); if (/^눈검수를 못 씀/.test(r)) { b.textContent = "👁 북마크 '도구'를 새로 만들어야 씀"; b.style.background = "#c62828"; } };
   document.body.appendChild(b);
 };
-if (typeof setTimeout === "function") setTimeout(() => { try { window.__eyeButton(); } catch (e) {  } }, 0);
+if (typeof setTimeout === "function") setTimeout(() => { try { window.__eyeButton(); } catch (e) {  }
+  try { const ov = document.getElementById("__eyePop"), S = window.__eyeS;
+    if (ov && ov.style.display !== "none" && S && S.pages && S.pages.some(Boolean)) { eyeUI(); eyeBar(); eyeShow(); eyeCards(); } } catch (e) {  } }, 0);
 }
